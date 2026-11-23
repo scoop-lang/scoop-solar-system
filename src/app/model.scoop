@@ -1,0 +1,234 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.math.*
+import scoop.platform.time.SystemClock
+import scoop.ui.*
+import scoop.ui.text.TextEditorState
+
+internal class SolarModel : Closeable {
+    val ephemeris = Ephemeris()
+    val catalog = bodyCatalog()
+    val clock = SimulationClock(
+        ephemeris.parse(SystemClock.now().toString()),
+        ephemeris.minimum,
+        ephemeris.maximum
+    )
+    val time = state(clock.sample())
+    val revision = state(0L)
+    val selected = state(BodyId(399))
+    val activeSystem = state(0)
+    val showOrbits = state(true)
+    val showLabels = state(true)
+    val showBelt = state(true)
+    val directoryOpen = state(true)
+    val windowWidth = state(1280.0)
+    val detailsFocus = FocusHandle()
+    val hoverBody: State<BodyId?> = state(None)
+    val hoverOpen = state(false)
+    val hoverPoint = state(Point(0.0, 0.0))
+    val detailOpen = state(false)
+    val beltDetails = state(false)
+    val message = state("")
+    val timelineSpan = state(365.25 * 86400.0)
+    val timelineCenter = state(time.value)
+    val dateInput = TextEditorState(ephemeris.format(time.value))
+    val camera = OrbitCamera()
+    var accepted: SceneFrame? = None
+    private var follow: BodyId? = None
+    private var previousFollow = Vector3(0.0, 0.0, 0.0)
+    private var resumeAfterDetail = false
+    private var orbitEpoch = Double.NEGATIVE_INFINITY
+    private var orbitTracks: Array<OrbitTrack> = []
+    private var orbitSystem = -1
+
+    init {
+        camera.distance = 4.6
+    }
+
+    fun body(id: BodyId): Body {
+        for (body in catalog)
+            if (body.id == id) return body
+        throw IllegalArgumentException(Some("Unknown body identity"))
+    }
+
+    fun updateTime() {
+        time.value = clock.sample()
+        if (time.value >
+            ephemeris.minimum &&
+            time.value <
+            ephemeris.maximum &&
+            message.value ==
+            "已到达星历时间边界，模拟已暂停。"
+        )
+            message.value = ""
+        if (clock.settleBoundary()) message.value = "已到达星历时间边界，模拟已暂停。"
+        if (clock.running && abs(time.value - timelineCenter.value) > timelineSpan.value * 0.48) {
+            timelineCenter.value = time.value
+        }
+        revision.value += 1L
+    }
+
+    fun seek(et: Double) {
+        clock.seek(et);
+        message.value = "";
+        updateTime()
+    }
+
+    fun setDate() {
+        try {
+            val parsed = ephemeris.parse(dateInput.text)
+            if (parsed < ephemeris.minimum || parsed > ephemeris.maximum) {
+                message.value = "可用日期范围：1900-01-01 至 2100-01-01 UTC。"
+                return
+            }
+            seek(parsed);
+            timelineCenter.value = parsed
+        } catch (error: Throwable) {
+            message.value = "日期无效，请输入 YYYY-MM-DD 或 YYYY-MM-DDTHH:MM:SS（UTC）。"
+        }
+    }
+
+    fun presentNow() {
+        seek(ephemeris.parse(SystemClock.now().toString()))
+        timelineCenter.value = time.value
+        dateInput.replaceAll(ephemeris.format(time.value))
+    }
+
+    fun overview(inner: Boolean) {
+        activeSystem.value = 0;
+        follow = None
+        camera.target = Vector3(0.0, 0.0, 0.0)
+        camera.distance = if (inner) 4.6 else 112.0
+        camera.minimumDistance = 0.2
+        camera.azimuth = -1.25;
+        camera.elevation = 0.65
+        hoverOpen.value = false
+        revision.value += 1L
+    }
+
+    fun focus(id: BodyId, close: Boolean = false) {
+        val entry = body(id)
+        selected.value = id
+        activeSystem.value = entry.system
+        follow = Some(id)
+        val current = frame()
+        val placement = current.find(id)
+        previousFollow = placement.packet.position
+        camera.target = previousFollow
+        camera.minimumDistance = displayRadius(entry) * 1.6
+        camera.distance = if (close || entry.moon)
+            displayRadius(entry) * (if (id.naif == 699 || id.naif == 799) 10.5 else 7.5)
+        else
+            systemDistance(entry.system)
+        camera.azimuth = atan2(-previousFollow.y, -previousFollow.x) + 0.52
+        camera.elevation = 0.33
+        hoverOpen.value = false
+        revision.value += 1L
+    }
+
+    fun openDetails(id: BodyId) {
+        selected.value = id
+        resumeAfterDetail = clock.running
+        val presented = when (accepted) {
+            case Some(val value) -> value.time;
+            case None -> clock.sample()
+        }
+        clock.pause();
+        clock.seek(presented)
+        updateTime()
+        hoverOpen.value = false;
+        beltDetails.value = false
+        detailOpen.value = true
+    }
+
+    fun setDetailOpen(open: Boolean) {
+        if (!open && detailOpen.value) {
+            detailOpen.value = false
+            if (resumeAfterDetail) clock.play()
+            updateTime()
+        }
+    }
+
+    fun frame(): SceneFrame {
+        val et = time.value
+        val system = activeSystem.value
+        val states = Array<PhysicalState>(catalog.size) { index ->
+            ephemeris.state(catalog[index].id, et)
+        }
+        val centers = Array<Vector3>(10L) { index ->
+            if (index == 0L)
+                Vector3(0.0, 0.0, 0.0)
+            else
+                ephemeris.state(BodyId(index.toInt()), et).position
+        }
+        val displayed = Array<DisplayBody>(catalog.size) { index ->
+            val entry = catalog[index]
+            val physical = states[index]
+            val center = centers[entry.system.toLong()]
+            val scale = if (entry.system == system) systemScale(system) else 1.0
+            val position = center
+                .add(physical.position.subtract(center).multiply(scale))
+                .multiply(1.0 / astronomicalUnit)
+            val packet = BodyPacket(
+                position, physical.axisX, physical.axisY, physical.axisZ,
+                shape(entry).multiply(displayRadius(entry)), entry.id.naif, entry.system,
+                if (entry.id == selected.value) 1 else 0, if (entry.id.naif == 399) 0.62 else 0.89
+            )
+            DisplayBody(entry, physical, packet, !entry.moon || entry.system == system)
+        }
+        when (follow) {
+            case Some(val id) -> {
+                for (placement in displayed)
+                    if (placement.body.id == id) {
+                        camera.target = camera
+                            .target
+                            .add(placement.packet.position.subtract(previousFollow))
+                        previousFollow = placement.packet.position
+                    }
+            }
+
+            case None -> Unit
+        }
+        if (abs(et - orbitEpoch) > 21600.0 || orbitSystem != system) {
+            val tracks = ArrayList<OrbitTrack>()
+            for (entry in catalog) {
+                if (entry.id.naif == 10 || (entry.moon && entry.system != system)) continue
+                val localPluto = entry.id.naif == 999 && system == 9
+                val center = BodyId(
+                    if (localPluto || (entry.moon && entry.system == 9))
+                        9
+                    else if (entry.moon) entry.system * 100 + 99 else 10
+                )
+                val query = if (entry.id.naif == 999 && !localPluto) BodyId(9) else entry.id
+                val orbit = ephemeris.orbit(query, center, et)
+                val points = Array<Vector3>(257L) { index ->
+                    ephemeris.orbitPoint(orbit, index.toDouble() / 256.0)
+                }
+                tracks.add(OrbitTrack(entry.id, center, points))
+            }
+            orbitTracks = tracks.toArray();
+            orbitEpoch = et;
+            orbitSystem = system
+        }
+        val placed = Array<PlacedOrbit>(orbitTracks.size) { index ->
+            val track = orbitTracks[index]
+            var center = Vector3(0.0, 0.0, 0.0)
+            if (track.center.naif == 9)
+                center = centers[9L].multiply(1.0 / astronomicalUnit)
+            else
+                for (body in displayed)
+                    if (body.body.id == track.center) center = body.packet.position
+            val localScale = if (track.center.naif != 10) systemScale(system) else 1.0
+            PlacedOrbit(track, center, localScale / astronomicalUnit, track.body == selected.value)
+        }
+        return SceneFrame(
+            et, CameraPacket(camera.eye, camera.target, Vector3(0.0, 0.0, 1.0), camera.fieldOfView),
+            displayed, placed, showOrbits.value, showBelt.value, showLabels.value
+        )
+    }
+
+    public override fun close() {
+        ephemeris.close()
+    }
+}

@@ -1,0 +1,70 @@
+package dev.scoop.solar
+
+import scoop.test.*
+
+private class ManualTime {
+    var seconds = 0.0
+}
+
+@Test
+private class ClockTests {
+    @Test
+    fun rateChangesAndSeekPreserveAnAnchor() {
+        val source = ManualTime()
+        val clock = SimulationClock(100.0, -1000000.0, 1000000.0, { source.seconds })
+        clock.setRate(10.0);
+        clock.play()
+        source.seconds = 3.0
+        assertEquals(130.0, clock.sample())
+        clock.setRate(-2.0)
+        assertEquals(130.0, clock.sample())
+        source.seconds = 8.0
+        assertEquals(120.0, clock.sample())
+        clock.seek(500.0)
+        source.seconds = 10.0
+        assertEquals(496.0, clock.sample())
+        clock.pause();
+        source.seconds = 200.0
+        assertEquals(496.0, clock.sample())
+    }
+    @Test
+    fun DragCancelRestoresTimeAndPlayback() {
+        val source = ManualTime()
+        val clock = SimulationClock(20.0, 0.0, 1000.0, { source.seconds })
+        clock.setRate(1.0);
+        clock.play()
+        source.seconds = 5.0
+        clock.drag(900.0)
+        assertFalse(clock.running)
+        source.seconds = 50.0
+        clock.drag(400.0);
+        clock.finishDrag(true)
+        assertTrue(clock.running)
+        assertEquals(25.0, clock.sample())
+        source.seconds = 55.0
+        assertEquals(30.0, clock.sample())
+        clock.pause();
+        clock.drag(700.0);
+        clock.finishDrag(false)
+        assertFalse(clock.running)
+        assertEquals(700.0, clock.sample())
+    }
+    @Test
+    fun BoundsAndHiddenIntervalsDoNotAccumulateFrameSteps() {
+        val source = ManualTime()
+        val clock = SimulationClock(0.0, -1000.0, 1000.0, { source.seconds })
+        clock.setRate(2.0);
+        clock.play()
+        source.seconds = 400.0
+        assertEquals(800.0, clock.sample())
+        source.seconds = 600.0
+        assertEquals(1000.0, clock.sample())
+        assertTrue(clock.settleBoundary());
+        assertFalse(clock.running)
+        clock.setRate(-2.0);
+        clock.play();
+        source.seconds = 1700.0
+        assertEquals(-1000.0, clock.sample())
+        assertTrue(clock.settleBoundary())
+    }
+}

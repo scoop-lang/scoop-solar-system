@@ -1,0 +1,78 @@
+schema = 1
+
+[cone]
+group = "dev.scoop"
+name = "solar-system"
+version = "0.1.0"
+kind = "executable"
+description = "A time-driven solar system explorer built with Scoop"
+
+[[sources]]
+path = "src"
+when = { os = "darwin" }
+
+[dependencies]
+"scoop:scoop.core" = "0.1.0"
+"scoop:scoop.std" = "0.1.0"
+"scoop:scoop.math" = "0.1.0"
+"scoop:scoop.platform" = "0.1.0"
+"scoop:scoop.graphics" = "0.1.0"
+"scoop:scoop.graphics.text" = "0.1.0"
+"scoop:scoop.window" = "0.1.0"
+"scoop:scoop.surface" = "0.1.0"
+"scoop:scoop.ui" = "0.1.0"
+"scoop:scoop.ui.component" = "0.1.0"
+"scoop:scoop.ui.style" = "0.1.0"
+"scoop:scoop.ui.style.shadcn" = "0.1.0"
+
+[[test.sources]]
+path = "tests"
+
+[test-dependencies]
+"scoop:scoop.test" = "0.1.0"
+
+[native]
+include = ["native/include", "vendor/cspice/include"]
+c_flags = ["-Wall", "-Wextra", "-Werror"]
+objc_flags = ["-Wall", "-Wextra", "-Werror"]
+
+[[native.sources]]
+path = "native/astronomy/ephemeris.c"
+
+[[native.sources]]
+path = "native/macos/resources.m"
+when = { os = "darwin" }
+
+[[native.libraries]]
+name = "cspice"
+kind = "static"
+
+[[native.sources]]
+path = "native/macos/renderer.m"
+when = { os = "darwin" }
+
+[[native.sources]]
+path = "native/macos/shaders.m"
+when = { os = "darwin" }
+
+[[native.sources]]
+path = "native/macos/scene.m"
+when = { os = "darwin" }
+
+[[native.libraries]]
+name = "Foundation"
+kind = "framework"
+when = { os = "darwin" }
+
+[[native.libraries]]
+name = "Metal"
+kind = "framework"
+when = { os = "darwin" }
+
+[[native.libraries]]
+name = "MetalKit"
+kind = "framework"
+when = { os = "darwin" }
+
+[bundle]
+config = "packaging/macos.toml"

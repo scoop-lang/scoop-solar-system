@@ -1,0 +1,193 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.math.*
+import scoop.ui.*
+import scoop.ui.component.*
+import scoop.ui.component.column as columnView
+import scoop.ui.component.frame as frameView
+import scoop.ui.component.button as buttonView
+import scoop.ui.component.scrollArea as scrollAreaView
+import scoop.ui.component.slider as sliderView
+import scoop.ui.component.input as inputView
+import scoop.text.*
+
+private val rates: Array<Double> = [1.0, 3600.0, 86400.0, 2592000.0, 31557600.0, 315576000.0]
+
+private val rateNames: Array<String> = [
+    "实时",
+    "1 小时 / 秒",
+    "1 天 / 秒",
+    "30 天 / 秒",
+    "1 年 / 秒",
+    "10 年 / 秒"
+]
+
+private fun rateIndex(model: SolarModel): Long {
+    for (i in 0L..<rates.size)
+        if (rates[i] == abs(model.clock.rate)) return i
+    return 2L
+}
+
+private fun changeRate(model: SolarModel, step: Long) {
+    val next = (rateIndex(model) + step + rates.size) % rates.size
+    model.clock.setRate(rates[next] * (if (model.clock.rate < 0.0) -1.0 else 1.0));
+    model.updateTime()
+}
+
+internal fun timeline(model: SolarModel): View {
+    val compact = model.windowWidth.value < 1100.0
+    val span = model.timelineSpan.value
+    val center = model.timelineCenter.value
+    val minimum = max(model.ephemeris.minimum, center - span * 0.5)
+    val maximum = min(model.ephemeris.maximum, center + span * 0.5)
+    val current = model.time.value
+    return panel(
+        column {
+            spacing = 11.0
+            row {
+                alignment = CrossAlignment.Center;
+                spacing = 8.0
+                add(
+                    columnView {
+                        label("SIMULATION TIME  /  UTC") {
+                            style {
+                                fontSize = Some(10.0);
+                                color = Some(Color(0.5, 0.7, 0.8, 1.0));
+                                letterSpacing = Some(1.2)
+                            }
+                        }
+                        label(model.ephemeris.format(current).replace("T", "  ")) {
+                            style {
+                                fontSize = Some(if (compact) 17.0 else 19.0);
+                                weight = Some(600)
+                            }
+                        }
+                    }
+                )
+                item(empty()) { grow = 1.0 }
+                button(
+                    if (model.clock.running) "Ⅱ  暂停" else "▶  运行",
+                    {
+                        model.clock.toggle();
+                        model.updateTime()
+                    }
+                )
+                button(
+                    if (model.clock.rate < 0.0) "← 反向" else "→ 正向",
+                    {
+                        model.clock.setRate(-model.clock.rate);
+                        model.updateTime()
+                    }
+                ) {
+                    variant = ButtonVariant.Secondary;
+                    size = ButtonSize.Sm
+                }
+                button("−", { changeRate(model, -1L) }) {
+                    variant = ButtonVariant.Ghost;
+                    size = ButtonSize.Sm
+                }
+                button(rateNames[rateIndex(model)], { changeRate(model, 1L) }) {
+                    variant = ButtonVariant.Secondary;
+                    size = ButtonSize.Sm
+                }
+                button("+", { changeRate(model, 1L) }) {
+                    variant = ButtonVariant.Ghost;
+                    size = ButtonSize.Sm
+                }
+            }
+            add(
+                sliderView(
+                    binding(
+                        { [limited(model.time.value, minimum, maximum)] },
+                        { value ->
+                            model.clock.drag(value[0L]);
+                            model.updateTime()
+                        }
+                    ),
+                    RangeSpec(minimum, maximum)
+                ) {
+                    keyboardStep = Some(max(1.0, span / 1000.0))
+                    onValueCommit = { _ ->
+                        model.clock.finishDrag(false);
+                        model.updateTime()
+                    }
+                    onValueCancel = { _, _ ->
+                        model.clock.finishDrag(true);
+                        model.updateTime()
+                    }
+                }
+            )
+            row {
+                alignment = CrossAlignment.Center;
+                spacing = 6.0
+                label(model.ephemeris.format(minimum).substring(0L, 10L)) {
+                    style {
+                        fontSize = Some(10.0);
+                        color = Some(Color.White.withAlpha(0.5))
+                    }
+                }
+                item(empty()) { grow = 1.0 }
+                val spanNames: Array<String> = ["日", "月", "年", "世纪"]
+                val spanValues: Array<Double> = [86400.0, 2592000.0, 31557600.0, 6311520000.0]
+                for (i in 0L..<spanNames.size) {
+                    button(
+                        spanNames[i],
+                        {
+                            model.timelineSpan.value = spanValues[i];
+                            model.timelineCenter.value = model.time.value
+                        }
+                    ) {
+                        variant = ButtonVariant.Ghost;
+                        size = ButtonSize.Sm
+                    }
+                }
+                item(empty()) { grow = 1.0 }
+                label(model.ephemeris.format(maximum).substring(0L, 10L)) {
+                    style {
+                        fontSize = Some(10.0);
+                        color = Some(Color.White.withAlpha(0.5))
+                    }
+                }
+            }
+            row {
+                alignment = CrossAlignment.Center;
+                spacing = 8.0
+                add(
+                    frameView(
+                        inputView(model.dateInput) {
+                            placeholder = "YYYY-MM-DDTHH:MM:SS";
+                            onSubmit = { _ -> model.setDate() }
+                        }
+                    ) { width = Some(210.0) }
+                )
+                button("跳转", { model.setDate() }) {
+                    variant = ButtonVariant.Secondary;
+                    size = ButtonSize.Sm
+                }
+                button("现在", { model.presentNow() }) {
+                    variant = ButtonVariant.Ghost;
+                    size = ButtonSize.Sm
+                }
+                item(empty()) { grow = 1.0 }
+                if (!compact)
+                    label(
+                        if (model.message.value != "") model.message.value else "天体大小与卫星间距采用展示比例"
+                    ) {
+                        style {
+                            fontSize = Some(10.0);
+                            color = Some(Color.White.withAlpha(0.45))
+                        }
+                    }
+            }
+            if (compact)
+                label(if (model.message.value != "") model.message.value else "天体大小与卫星间距采用展示比例") {
+                    style {
+                        fontSize = Some(10.0);
+                        color = Some(Color.White.withAlpha(0.45))
+                    }
+                }
+        },
+        16.0
+    )
+}

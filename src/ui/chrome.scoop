@@ -1,0 +1,284 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.math.*
+import scoop.ui.*
+import scoop.ui.component.*
+import scoop.ui.component.column as columnView
+import scoop.ui.component.frame as frameView
+import scoop.ui.component.button as buttonView
+import scoop.ui.component.scrollArea as scrollAreaView
+import scoop.ui.component.slider as sliderView
+import scoop.ui.component.input as inputView
+import scoop.text.*
+import scoop.ui.style.*
+
+internal fun rounded(value: Double, places: Double = 2.0): String {
+    val factor = pow(10.0, places)
+    return (round(value * factor).toDouble() / factor).toString()
+}
+
+internal fun panel(content: View, padding: Double = 16.0): View = frame(content) {
+    this.padding = Some(Insets.all(padding))
+    style {
+        background(Some(Paint(Color(0.035, 0.052, 0.078, 0.94))))
+        border(Some(Border.all(1.0, Color(0.16, 0.22, 0.29, 0.7))))
+        corners(Corners.all(16.0))
+    }
+}
+
+internal fun toolbar(model: SolarModel): View = row {
+    val compact = model.windowWidth.value < 1100.0
+    alignment = CrossAlignment.Center;
+    spacing = if (compact) 6.0 else 10.0
+    add(
+        columnView {
+            if (!compact)
+                label("SCOOP  /  SOLAR SYSTEM") {
+                    style {
+                        fontSize = Some(11.0);
+                        color = Some(Color(0.48, 0.72, 0.85, 1.0));
+                        letterSpacing = Some(2.0)
+                    }
+                }
+            label(if (compact) "太阳系" else "太阳系 · 轨道浏览") {
+                style {
+                    fontSize = Some(23.0);
+                    weight = Some(700)
+                }
+            }
+        }
+    )
+    item(empty()) { grow = 1.0 }
+    button("全景", { model.overview(false) }) {
+        variant = ButtonVariant.Secondary;
+        size = ButtonSize.Sm
+    }
+    button("内行星", { model.overview(true) }) {
+        variant = ButtonVariant.Secondary;
+        size = ButtonSize.Sm
+    }
+    button(
+        if (model.directoryOpen.value) "收起目录" else "天体目录",
+        { model.directoryOpen.value = !model.directoryOpen.value }
+    ) {
+        variant = ButtonVariant.Ghost;
+        size = ButtonSize.Sm
+    }
+    button(
+        if (model.showOrbits.value) "轨道 ✓" else "轨道",
+        { model.showOrbits.value = !model.showOrbits.value }
+    ) {
+        variant = ButtonVariant.Ghost;
+        size = ButtonSize.Sm
+    }
+    button(
+        if (model.showLabels.value) "标签 ✓" else "标签",
+        { model.showLabels.value = !model.showLabels.value }
+    ) {
+        variant = ButtonVariant.Ghost;
+        size = ButtonSize.Sm
+    }
+    button(
+        "复位",
+        {
+            if (model.activeSystem.value == 0)
+                model.overview(true)
+            else
+                model.focus(BodyId(model.activeSystem.value * 100 + 99))
+        }
+    ) {
+        variant = ButtonVariant.Ghost;
+        size = ButtonSize.Sm
+    }
+    if (compact)
+        button(
+            model.body(model.selected.value).name + " · 详情",
+            { model.openDetails(model.selected.value) }
+        ) {
+            size = ButtonSize.Sm
+            focus { handle = Some(model.detailsFocus) }
+        }
+}
+
+internal fun directory(model: SolarModel): View = panel(
+    scrollAreaView(
+        columnView {
+            spacing = 8.0
+            label("探索天体") {
+                style {
+                    fontSize = Some(16.0);
+                    weight = Some(650)
+                }
+            }
+            label("10 个主天体 · 21 颗卫星") {
+                style {
+                    fontSize = Some(11.0);
+                    color = Some(Color.White.withAlpha(0.5))
+                }
+            }
+            for (primary in model.catalog)
+                if (!primary.moon) {
+                    add(
+                        frameView(
+                            buttonView(
+                                primary.name + "  " + primary.english,
+                                { model.focus(primary.id) }
+                            ) {
+                                variant = if (model.selected.value == primary.id)
+                                    ButtonVariant.Secondary
+                                else
+                                    ButtonVariant.Ghost
+                                size = ButtonSize.Sm
+                            }
+                        ) { width = Some(157.0) }
+                    )
+                    if (primary.system == model.activeSystem.value) {
+                        for (moon in model.catalog)
+                            if (moon.moon && moon.system == primary.system) {
+                                add(
+                                    frameView(
+                                        buttonView("· " + moon.name, { model.focus(moon.id) }) {
+                                            variant = if (model.selected.value == moon.id)
+                                                ButtonVariant.Secondary
+                                            else
+                                                ButtonVariant.Ghost
+                                            size = ButtonSize.Sm
+                                        }
+                                    ) {
+                                        width = Some(157.0);
+                                        padding = Some(Insets(8.0, 0.0, 0.0, 0.0))
+                                    }
+                                )
+                            }
+                    }
+                }
+            button("小行星带 · 集合", { model.beltDetails.value = true }) {
+                variant = ButtonVariant.Ghost;
+                size = ButtonSize.Sm
+            }
+        }
+    ),
+    13.0
+)
+
+internal fun selectionPanel(model: SolarModel): View {
+    val body = model.body(model.selected.value)
+    val physical = model.ephemeris.state(body.id, model.time.value)
+    return panel(
+        column {
+            spacing = 10.0
+            label(body.english) {
+                style {
+                    fontSize = Some(11.0);
+                    letterSpacing = Some(2.0);
+                    color = Some(Color(0.51, 0.74, 0.87, 1.0))
+                }
+            }
+            label(body.name) {
+                style {
+                    fontSize = Some(26.0);
+                    weight = Some(700)
+                }
+            }
+            label(body.kind) {
+                style {
+                    color = Some(Color.White.withAlpha(0.58));
+                    fontSize = Some(12.0)
+                }
+            }
+            label("平均半径  " + rounded(body.radius, 1.0) + " km") { style { fontSize = Some(12.0) } }
+            if (body.id.naif != 10)
+                label(
+                    "距太阳  " + rounded(physical.position.length() / astronomicalUnit, 3.0) + " AU"
+                ) { style { fontSize = Some(12.0) } }
+            row {
+                spacing = 8.0
+                button("近观", { model.focus(body.id, true) }) {
+                    variant = ButtonVariant.Secondary;
+                    size = ButtonSize.Sm
+                }
+                button("查看详情", { model.openDetails(body.id) }) {
+                    size = ButtonSize.Sm
+                    focus { handle = Some(model.detailsFocus) }
+                }
+            }
+            label("拖动旋转 · 滚轮缩放\nShift 拖动平移 · 双击聚焦") {
+                style {
+                    fontSize = Some(10.5);
+                    color = Some(Color.White.withAlpha(0.42))
+                }
+            }
+        }
+    )
+}
+
+internal class SolarLayout(private val model: SolarModel, scope: ComponentScope) :
+    Element<Unit>(scope) {
+    public override fun measure(context: MeasureContext, constraints: Constraints): LayoutResult<
+        Unit
+    > {
+        val width = constraints.maxWidth ?: 1280.0
+        val height = constraints.maxHeight ?: 800.0
+        context
+            .measureChild(
+                0L,
+                Constraints(
+                    minWidth = width,
+                    maxWidth = Some(width),
+                    minHeight = height,
+                    maxHeight = Some(height)
+                )
+            )
+        context.placeChild(0L, Point(0.0, 0.0))
+        context
+            .measureChild(
+                1L,
+                Constraints(
+                    minWidth = max(0.0, width - 48.0),
+                    maxWidth = Some(max(0.0, width - 48.0)),
+                    maxHeight = Some(80.0)
+                )
+            )
+        context.placeChild(1L, Point(24.0, 20.0))
+        val timeWidth = min(1000.0, width - 40.0)
+        val time = context
+            .measureChild(
+                3L,
+                Constraints(
+                    minWidth = timeWidth,
+                    maxWidth = Some(timeWidth),
+                    maxHeight = Some(height * 0.45)
+                )
+            )
+        context.placeChild(3L, Point((width - timeWidth) * 0.5, height - time.size.height - 18.0))
+        val sideHeight = max(60.0, height - time.size.height - 136.0)
+        val dirWidth = if (model.directoryOpen.value) 190.0 else 0.0
+        context
+            .measureChild(
+                2L,
+                Constraints(
+                    minWidth = dirWidth,
+                    maxWidth = Some(dirWidth),
+                    minHeight = sideHeight,
+                    maxHeight = Some(sideHeight)
+                )
+            )
+        context.placeChild(2L, Point(24.0, 100.0))
+        val infoWidth = min(234.0, max(0.0, width - 440.0))
+        context
+            .measureChild(4L, Constraints(maxWidth = Some(infoWidth), maxHeight = Some(sideHeight)))
+        context.placeChild(4L, Point(width - infoWidth - 24.0, 100.0))
+        context.measureChild(5L, Constraints(maxWidth = Some(16.0), maxHeight = Some(16.0)))
+        context
+            .placeChild(5L, Point(model.hoverPoint.value.x - 8.0, model.hoverPoint.value.y - 8.0))
+        for (i in 6L..<context.childCount) {
+            context.measureChild(i, Constraints(maxWidth = Some(width), maxHeight = Some(height)))
+            context.placeChild(i, Point(0.0, 0.0))
+        }
+        return LayoutResult(LayoutMetrics(Size(width, height)), Unit)
+    }
+    public override fun scene(context: SceneContext, layout: Unit) {
+        context.children()
+    }
+}

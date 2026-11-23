@@ -1,0 +1,16 @@
+[bundle]
+schema = 1
+identifier = "dev.scoop.solar-system"
+name = "solar-system"
+version = "0.1.0"
+display-name = "Scoop Solar System"
+description = "A time-driven solar system explorer built with Scoop"
+publisher = "Scoop Solar System"
+
+[[bundle.files]]
+from = "../assets/prepared"
+to = "solar"
+kind = "resource"
+
+[bundle.macos]
+formats = ["app"]

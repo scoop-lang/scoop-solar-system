@@ -1,0 +1,44 @@
+package dev.scoop.solar
+
+import scoop.math.*
+
+internal class OrbitCamera {
+    var target = Vector3(0.0, 0.0, 0.0)
+    var distance = 7.0
+    var azimuth = -1.25
+    var elevation = 0.42
+    var minimumDistance = 0.2
+    val fieldOfView = 0.72
+    val eye: Vector3
+        get() = target
+            .add(
+                Vector3(
+                    cos(azimuth) * cos(elevation),
+                    sin(azimuth) * cos(elevation),
+                    sin(elevation)
+                )
+                    .multiply(distance)
+            )
+    fun rotate(dx: Double, dy: Double) {
+        azimuth -= dx * 0.006
+        elevation = limited(elevation + dy * 0.006, -1.52, 1.52)
+    }
+    fun zoom(amount: Double) {
+        distance = limited(distance * exp(amount), minimumDistance, 500.0)
+    }
+    fun pan(dx: Double, dy: Double, height: Double) {
+        val forward = target.subtract(eye).normalized()
+        val right = forward.cross(Vector3(0.0, 0.0, 1.0)).normalized()
+        val up = right.cross(forward)
+        val units = 2.0 * distance * tan(fieldOfView / 2.0) / height
+        target = target.add(right.multiply(-dx * units)).add(up.multiply(dy * units))
+    }
+}
+
+@CLayout
+internal struct CameraPacket(
+    val eye: Vector3,
+    val target: Vector3,
+    val up: Vector3,
+    val fieldOfView: Double
+)

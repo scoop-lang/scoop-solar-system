@@ -1,0 +1,242 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.math.*
+import scoop.time.Duration
+import scoop.ui.*
+import scoop.ui.component.*
+import scoop.ui.component.column as columnView
+import scoop.ui.component.frame as frameView
+import scoop.ui.component.button as buttonView
+import scoop.ui.component.scrollArea as scrollAreaView
+import scoop.ui.component.slider as sliderView
+import scoop.ui.component.input as inputView
+import scoop.text.*
+
+private fun dialogHeading(title: String, subtitle: String, onClose: () -> Unit): View = row {
+    alignment = CrossAlignment.Center
+    spacing = 12.0
+    item(
+        columnView {
+            spacing = 5.0
+            label(title) {
+                style {
+                    fontSize = Some(21.0);
+                    weight = Some(650)
+                }
+            }
+            label(subtitle) {
+                style {
+                    fontSize = Some(12.0);
+                    color = Some(Color.White.withAlpha(0.55))
+                }
+            }
+        }
+    ) { grow = 1.0 }
+    add(
+        frameView(
+            buttonView("关闭", onClose) {
+                size = ButtonSize.Sm;
+                variant = ButtonVariant.Ghost
+            }
+        ) {
+            width = Some(60.0);
+            height = Some(32.0)
+        }
+    )
+}
+
+internal fun bodyCard(model: SolarModel): View {
+    val id = model.hoverBody.value ?: model.selected.value
+    val body = model.body(id)
+    val physical = model.ephemeris.state(id, model.time.value)
+    return hoverCard(
+        frame(empty()) {
+            width = Some(16.0);
+            height = Some(16.0)
+        },
+        column {
+            spacing = 9.0
+            label(body.name + "  " + body.english) {
+                style {
+                    fontSize = Some(17.0);
+                    weight = Some(650)
+                }
+            }
+            label(
+                body.kind +
+                    " · " +
+                    (
+                        if (body.system == 0)
+                            "太阳系中心恒星"
+                        else
+                            model.body(BodyId(body.system * 100 + 99)).name + "系统"
+                    )
+            ) { style { fontSize = Some(11.0) } }
+            label("平均半径 " + rounded(body.radius, 1.0) + " km") { style { fontSize = Some(12.0) } }
+            if (body.periodDays > 0.0)
+                label("公转周期约 " + rounded(body.periodDays, 3.0) + " 天") {
+                    style { fontSize = Some(12.0) }
+                }
+            if (body.id.naif != 10)
+                label(
+                    "距太阳 " + rounded(physical.position.length() / astronomicalUnit, 3.0) + " AU"
+                ) { style { fontSize = Some(12.0) } }
+            button("查看详情", { model.openDetails(id) }) { size = ButtonSize.Sm }
+        }
+    ) {
+        open = Some(model.hoverOpen.binding());
+        width = 278.0
+        side = OverlaySide.Right;
+        alignment = OverlayAlignment.Start
+        openDelay = Duration.milliseconds(200L);
+        closeDelay = Duration.milliseconds(250L)
+        transitDelay = Duration.milliseconds(500L);
+        gap = 12.0
+    }
+}
+
+internal fun details(model: SolarModel): View {
+    val body = model.body(model.selected.value)
+    val physical = model.ephemeris.state(body.id, model.time.value)
+    return dialog(
+        binding({ model.detailOpen.value }, { value -> model.setDetailOpen(value) }),
+        column {
+            spacing = 13.0
+            add(
+                frameView(element(body.id, { id, mount -> BodyPreview(model, id, mount) })) {
+                    height = Some(210.0)
+                }
+            )
+            label(body.description) { style { fontSize = Some(14.0) } }
+            label("物理与轨道") {
+                style {
+                    fontSize = Some(15.0);
+                    weight = Some(650)
+                }
+            }
+            label(
+                "类别    " +
+                    body.kind +
+                    "\n平均半径    " +
+                    rounded(body.radius, 1.0) +
+                    " km\n自转    " +
+                    body.rotation
+            )
+            if (body.periodDays > 0.0)
+                label(
+                    "平均公转周期    " +
+                        rounded(body.periodDays, 3.0) +
+                        " 地球日\n当前距太阳    " +
+                        rounded(physical.position.length() / astronomicalUnit, 5.0) +
+                        " AU\n日心速度    " +
+                        rounded(physical.velocity.length(), 3.0) +
+                        " km/s"
+                )
+            label("外观与资料") {
+                style {
+                    fontSize = Some(15.0);
+                    weight = Some(650)
+                }
+            }
+            label(body.appearance)
+            label(
+                "位置与姿态：NASA/JPL NAIF · SPK / PCK\n基础参数：NASA Solar System Exploration / JPL SSD\n地图：CelestiaContent 与其注明的 NASA / JPL / USGS、观测团队和图像作者。完整署名与原许可随应用保存在 solar/notices。"
+            ) {
+                style {
+                    fontSize = Some(11.0);
+                    color = Some(Color.White.withAlpha(0.65))
+                }
+            }
+            label(
+                "冻结时刻  " +
+                    model.ephemeris.format(model.time.value) +
+                    " UTC\n地图为代表性外观；阴影遵循展示几何，不用于精确日月食预报。"
+            ) {
+                style {
+                    fontSize = Some(10.0);
+                    color = Some(Color.White.withAlpha(0.45))
+                }
+            }
+        }
+    ) {
+        title(body.name + " · " + body.english)
+        description("天体档案 / " + body.kind)
+        width = 570.0;
+        scrollable = true;
+        showCloseButton = false
+        header(
+            dialogHeading(
+                body.name + " · " + body.english,
+                "天体档案 / " + body.kind,
+                { model.setDetailOpen(false) }
+            )
+        )
+        focus { restoreTarget = Some(model.detailsFocus) }
+        backdrop = Some(Paint(Color.Black.withAlpha(0.55)))
+    }
+}
+
+internal fun beltDialog(model: SolarModel): View = dialog(
+    model.beltDetails.binding(),
+    column {
+        spacing = 14.0
+        label("主小行星带位于火星与木星轨道之间，包含大量岩石和金属天体。谷神星是其中最大的天体，属于矮行星。")
+        label("画面用 2,200 个代表性粒子示意约 2.1—3.3 AU 的带状分布。每个粒子的参数固定，位置由所选时间求值，回到相同时间会得到相同画面。")
+        label("这些粒子不对应具体编号的小行星；数量、大小和密度仅服务展示。")
+        button(
+            if (model.showBelt.value) "隐藏小行星带" else "显示小行星带",
+            { model.showBelt.value = !model.showBelt.value }
+        ) { variant = ButtonVariant.Secondary }
+    }
+) {
+    title("主小行星带");
+    description("简化集合示意");
+    width = 460.0;
+    showCloseButton = false
+    header(dialogHeading("主小行星带", "简化集合示意", { model.beltDetails.value = false }))
+}
+
+private class BodyPreview(
+    private val model: SolarModel,
+    private val id: Props<BodyId>,
+    scope: ComponentScope
+) : Element<Unit>(scope) {
+    private val resources = scope.resource { ViewportResources() }
+    public override fun measure(context: MeasureContext, constraints: Constraints): LayoutResult<
+        Unit
+    > = LayoutResult(
+        LayoutMetrics(constraints.constrain(Size(constraints.maxWidth ?: 480.0, 210.0))),
+        Unit
+    )
+    public override fun scene(context: SceneContext, layout: Unit) {
+        val scene = model.frame()
+        val selected = scene.find(id.value)
+        val center = selected.packet.position
+        val radius = displayRadius(selected.body)
+        val light = if (id.value.naif == 10)
+            Vector3(0.3, -1.0, 0.35)
+        else
+            center.multiply(-1.0).normalized().add(Vector3(0.0, 0.0, 0.25))
+        val camera = CameraPacket(
+            center
+                .add(
+                    light
+                        .normalized()
+                        .multiply(
+                            radius *
+                                (if (id.value.naif == 699 || id.value.naif == 799) 9.0 else 5.8)
+                        )
+                ),
+            center,
+            Vector3(0.0, 0.0, 1.0),
+            0.72
+        )
+        val bodies = Array<DisplayBody>(scene.bodies.size) { index ->
+            val value = scene.bodies[index]
+            DisplayBody(value.body, value.physical, value.packet, value.body.id == id.value)
+        }
+        val preview = SceneFrame(scene.time, camera, bodies, [], false, false, false)
+        context.draw { paint -> resources.paint(paint.canvas, paint.size, preview) }
+    }
+}

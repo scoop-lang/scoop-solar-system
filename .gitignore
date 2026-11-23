@@ -1,0 +1,10 @@
+.DS_Store
+.cache/
+build/
+target/
+dist/
+vendor/downloads/
+vendor/cspice/
+assets/prepared/
+__pycache__/
+.ruff_cache/

@@ -1,0 +1,74 @@
+package dev.scoop.solar
+
+import scoop.graphics.text.FontCollection
+import scoop.ui.*
+import scoop.ui.component.*
+import scoop.ui.style.*
+import scoop.ui.style.shadcn.*
+import scoop.window.*
+
+internal class SolarApplication(scope: ComponentScope) : Component(scope) {
+    private val model = scope.resource { SolarModel() }
+    public override fun render(): View {
+        val revision = model.revision.value
+        val model = this.model
+        return element(
+            revision,
+            { _, mount -> SolarLayout(model, mount) },
+            [
+                element({ mount -> SolarViewport(model, mount) }),
+                toolbar(model),
+                if (model.directoryOpen.value) directory(model) else empty(),
+                timeline(model),
+                if (model.windowWidth.value >= 1100.0) selectionPanel(model) else empty(),
+                bodyCard(model),
+                details(model),
+                beltDialog(model)
+            ]
+        )
+    }
+}
+
+private fun runApplication() {
+    val theme = ThemeSource(shadcnTheme(ThemeMode.Dark))
+    FontCollection()
+        .use { fonts ->
+            context(theme) {
+                UiHost { host, active, event ->
+                    when (event) {
+                        case Resumed -> {
+                            val window = active
+                                .createWindow(
+                                    windowAttributes {
+                                        title = "Scoop Solar System";
+                                        size = LogicalSize(1280.0, 800.0)
+                                        constraints = WindowSizeConstraints(
+                                            min = Some(LogicalSize(800.0, 640.0))
+                                        )
+                                    }
+                                )
+                            host
+                                .attach(
+                                    window,
+                                    { mount -> SolarApplication(mount) },
+                                    fonts = Some(fonts)
+                                )
+                        }
+
+                        case Window(_, WindowEvent.CloseRequested) -> active.requestExit()
+                        else -> Unit
+                    }
+                }
+                    .use { host -> Application().run(host) }
+            }
+        }
+}
+
+fun main() {
+    try {
+        runApplication()
+    } catch (error: Exception) {
+        println("Scoop Solar System: " + (error.message ?: "unknown startup error"))
+        throw error
+    }
+}

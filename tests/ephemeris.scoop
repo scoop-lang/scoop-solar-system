@@ -1,0 +1,88 @@
+package dev.scoop.solar
+
+import scoop.test.*
+import scoop.math.*
+import scoop.graphics.*
+
+@Test
+private class EphemerisTests {
+    @Test
+    fun allSystemsCanBeFocusedAndSeekIsOrderIndependent() {
+        SolarModel()
+            .use { model ->
+                model.seek(0.0)
+                val initial = model.frame().find(BodyId(399)).physical.position
+                val horizons = Vector3(-26499033.67743050, 144697296.7925493, -611.1494259536266)
+                assertTrue(initial.subtract(horizons).length() < 0.01)
+                for (body in model.catalog) {
+                    model.focus(body.id)
+                    val frame = model.frame()
+                    assertTrue(frame.find(body.id).visible)
+                    assertTrue(frame.find(body.id).physical.position.length().isFinite())
+                    for (orbit in frame.orbits) {
+                        assertEquals(257L, orbit.track.points.size)
+                        assertTrue(orbit.track.points[0L].length().isFinite())
+                    }
+                }
+                model.seek(model.ephemeris.maximum)
+                model.frame()
+                model.seek(model.ephemeris.minimum)
+                model.frame()
+                model.seek(0.0)
+                val repeated = model.frame().find(BodyId(399)).physical.position
+                assertEquals(initial.x, repeated.x)
+                assertEquals(initial.y, repeated.y)
+                assertEquals(initial.z, repeated.z)
+            }
+    }
+
+    @Test
+    fun CameraPanIsVisibleAndSurvivesTimeChanges() {
+        SolarModel()
+            .use { model ->
+                model.seek(0.0)
+                model.focus(BodyId(399), true)
+                val size = Size(1280.0, 800.0)
+                model.camera.pan(48.0, -24.0, size.height)
+                for (et in [0.0, 86400.0, 2592000.0]) {
+                    model.seek(et)
+                    val frame = model.frame()
+                    val earth = frame.find(BodyId(399))
+                    val projected = project(
+                        frame.camera,
+                        earth.packet.position,
+                        earth.packet.radii.x,
+                        size
+                    )!!
+                    assertTrue(abs(projected.point.x - (size.width / 2.0 + 48.0)) < 1e-7)
+                    assertTrue(abs(projected.point.y - (size.height / 2.0 - 24.0)) < 1e-7)
+                }
+            }
+    }
+
+    @Test
+    fun PlutoAndCharonShareTheSameDisplayTransform() {
+        SolarModel()
+            .use { model ->
+                model.seek(0.0)
+                model.focus(BodyId(999))
+                val frame = model.frame()
+                val pluto = frame.find(BodyId(999))
+                val charon = frame.find(BodyId(901))
+                val expected = charon
+                    .physical
+                    .position
+                    .subtract(pluto.physical.position)
+                    .multiply(systemScale(9) / astronomicalUnit)
+                val displayed = charon.packet.position.subtract(pluto.packet.position)
+                assertTrue(expected.subtract(displayed).length() < 1e-12)
+                val barycenter = model
+                    .ephemeris
+                    .state(BodyId(9), 0.0)
+                    .position
+                    .multiply(1.0 / astronomicalUnit)
+                assertTrue(pluto.packet.position.subtract(barycenter).length() > 0.001)
+                assertTrue(charon.packet.position.subtract(barycenter).length() > 0.02)
+            }
+    }
+}

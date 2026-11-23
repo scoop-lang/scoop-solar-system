@@ -1,0 +1,26 @@
+package dev.scoop.solar
+
+import scoop.math.*
+
+@CLayout
+internal struct Vector3(val x: Double, val y: Double, val z: Double) {
+    fun add(value: Vector3): Vector3 = Vector3(x + value.x, y + value.y, z + value.z)
+    fun subtract(value: Vector3): Vector3 = Vector3(x - value.x, y - value.y, z - value.z)
+    fun multiply(value: Double): Vector3 = Vector3(x * value, y * value, z * value)
+    fun dot(value: Vector3): Double = x * value.x + y * value.y + z * value.z
+    fun cross(value: Vector3): Vector3 = Vector3(
+        y * value.z - z * value.y,
+        z * value.x - x * value.z,
+        x * value.y - y * value.x
+    )
+    fun length(): Double = sqrt(dot(this))
+    fun normalized(): Vector3 {
+        val magnitude = length()
+        if (magnitude <= 0.0) throw IllegalArgumentException(Some("cannot normalize a zero vector"))
+        return multiply(1.0 / magnitude)
+    }
+}
+
+internal fun limited(value: Double, minimum: Double, maximum: Double): Double = if (value < minimum)
+    minimum
+else if (value > maximum) maximum else value

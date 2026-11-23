@@ -1,0 +1,78 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.test.*
+import scoop.math.*
+
+@Test
+private class GeometryTests {
+    private val zero = Vector3(0.0, 0.0, 0.0)
+    private val x = Vector3(1.0, 0.0, 0.0)
+    private val y = Vector3(0.0, 1.0, 0.0)
+    private val z = Vector3(0.0, 0.0, 1.0)
+    private fun placement(id: Int, position: Vector3, radii: Vector3): DisplayBody {
+        val body = Body(
+            BodyId(id),
+            "test",
+            "test",
+            3,
+            1000.0,
+            1.0,
+            "1 day",
+            "moon",
+            "test",
+            "test",
+            "moon.jpg"
+        )
+        return DisplayBody(
+            body,
+            PhysicalState(position, zero, x, y, z, 1),
+            BodyPacket(position, x, y, z, radii, id, 3, 0, 0.9),
+            true
+        )
+    }
+    private fun frame(bodies: Array<DisplayBody>): SceneFrame = SceneFrame(
+        0.0,
+        CameraPacket(Vector3(0.0, -10.0, 0.0), zero, z, 0.72),
+        bodies,
+        [],
+        true,
+        false,
+        true
+    )
+
+    @Test
+    fun NearestSurfaceWinsIndependentOfCatalogOrder() {
+        val front = placement(399, zero, Vector3(1.0, 1.0, 1.0))
+        val back = placement(301, Vector3(0.0, 3.0, 0.0), Vector3(0.3, 0.3, 0.3))
+        assertEquals(
+            Some(BodyId(399)),
+            pick(frame([back, front]), Point(400.0, 300.0), Size(800.0, 600.0))
+        )
+        assertEquals(
+            Some(BodyId(399)),
+            pick(frame([front, back]), Point(400.0, 300.0), Size(800.0, 600.0))
+        )
+        assertEquals(None, pick(frame([front]), Point(0.0, 0.0), Size(800.0, 600.0)))
+    }
+    @Test
+    fun ProjectionAndEllipsoidPickingUseTheSameCamera() {
+        val moon = placement(401, Vector3(2.0, 0.0, 0.0), Vector3(0.5, 0.3, 0.2))
+        val scene = frame([moon])
+        val projected = project(scene.camera, moon.packet.position, 0.5, Size(800.0, 600.0))!!
+        assertEquals(Some(moon.body.id), pick(scene, projected.point, Size(800.0, 600.0)))
+        assertEquals(None, project(scene.camera, Vector3(0.0, -20.0, 0.0), 0.5, Size(800.0, 600.0)))
+    }
+    @Test
+    fun CatalogHasUniqueIdentitiesAndMonotonicDisplayRadii() {
+        val catalog = bodyCatalog()
+        assertEquals(31L, catalog.size)
+        for (i in 0L..<catalog.size)
+            for (j in i + 1L..<catalog.size) {
+                assertFalse(catalog[i].id == catalog[j].id)
+                if (catalog[i].radius > catalog[j].radius)
+                    assertTrue(displayRadius(catalog[i]) >= displayRadius(catalog[j]))
+            }
+        assertTrue(systemScale(4) * 9376.0 / astronomicalUnit > 0.06)
+    }
+}

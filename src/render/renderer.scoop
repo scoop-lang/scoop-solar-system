@@ -1,0 +1,268 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.collections.contains
+import scoop.graphics.native.*
+import scoop.math.*
+
+internal class ViewportResources : Closeable {
+    private var device: GpuDevice? = None
+    private var buffer: GpuBuffer? = None
+    private var renderer: Ptr<Unit>? = None
+    private var image: Image? = None
+    private var previous: SceneFrame? = None
+    private var tracks: Array<OrbitTrack> = []
+    private val loaded = ArrayList<Int>()
+
+    fun paint(canvas: Canvas, size: Size, frame: SceneFrame) {
+        if (size.width <= 0.0 || size.height <= 0.0) return
+        when (device) {
+            case None -> initialize(canvas);
+            case Some(_) -> Unit
+        }
+        val transform = canvas.pixelTransform
+        val scale = sqrt(transform.a * transform.a + transform.b * transform.b)
+        val width = ceil(size.width * scale).toInt()
+        val height = ceil(size.height * scale).toInt()
+        when (buffer) {
+            case Some(val current) ->
+                if (current.pixelWidth != width || current.pixelHeight != height) {
+                    image?.close();
+                    image = None;
+                    current.close();
+                    buffer = None;
+                    previous = None
+                }
+            case None -> Unit
+        }
+        when (buffer) {
+            case None ->
+                buffer = Some(
+                    device!!
+                        .createBuffer(
+                            width,
+                            height,
+                            NativeGpuFormat.Metal(80ul),
+                            GpuPixelLayout.Bgra8
+                        )
+                )
+            case Some(_) -> Unit
+        }
+        val reuse = when (previous) {
+            case Some(val old) -> sameScene(old, frame);
+            case None -> false
+        }
+        if (!reuse) {
+            upload(frame)
+            @Unsafe {
+                buffer!!
+                    .withNativeWrite { _, texture ->
+                        @Unsafe {
+                            when (texture) {
+                                case Metal(val pointer) ->
+                                    checkRenderer(
+                                        nativeRender(
+                                            renderer!!, pointer, frame.camera, frame.time,
+                                            if (frame.showOrbits) 1 else 0, if (frame.showBelt)
+                                                1
+                                            else
+                                                0
+                                        )
+                                    )
+                                else -> throw GraphicsException("incompatible render target")
+                            }
+                        }
+                    }
+            }
+            image?.close();
+            image = Some(buffer!!.snapshot());
+            previous = Some(frame)
+        }
+        canvas.drawImage(image!!, Rect(0.0, 0.0, size.width, size.height))
+    }
+
+    private fun upload(frame: SceneFrame) {
+        val native = renderer!!
+        @Unsafe {
+            nativeBegin(native)
+        }
+        for (body in frame.bodies)
+            if (body.visible) {
+                loadTexture(body.body.id.naif, body.body.texture)
+                @Unsafe {
+                    nativeBody(native, body.packet)
+                }
+            }
+        for (index in 0L..<frame.orbits.size) {
+            val placed = frame.orbits[index]
+            if (index >= tracks.size || !(tracks[index] === placed.track)) {
+                for (vertex in 0L..<placed.track.points.size) {
+                    @Unsafe {
+                        nativeOrbitPoint(
+                            native,
+                            index.toInt(),
+                            vertex.toInt(),
+                            placed.track.points[vertex]
+                        )
+                    }
+                }
+            }
+            @Unsafe {
+                nativeOrbitPlace(
+                    native,
+                    index.toInt(),
+                    placed.center,
+                    placed.scale,
+                    if (placed.selected) 1 else 0
+                )
+            }
+        }
+        tracks = Array<OrbitTrack>(frame.orbits.size) { index -> frame.orbits[index].track }
+    }
+
+    private fun loadTexture(id: Int, name: String) {
+        if (loaded.contains(id)) return
+        val path = resourceRoot() + "/textures/" + name
+        @Unsafe {
+            path
+                .withCString { value ->
+                    @Unsafe {
+                        checkRenderer(nativeLoad(renderer!!, id, value))
+                    }
+                }
+        }
+        loaded.add(id)
+    }
+
+    private fun initialize(canvas: Canvas) {
+        val owned = canvas.gpuDevice() ?: throw GraphicsException("a GPU Canvas is required")
+        try {
+            @Unsafe {
+                renderer = Some(
+                    owned
+                        .withNative { native ->
+                            @Unsafe {
+                                return@withNative when (native) {
+                                    case Metal(val metal, val queue) ->
+                                        nativeCreate(metal, queue) ?:
+                                            throw GraphicsException(
+                                                String.fromCString(nativeError())
+                                            )
+                                    else -> throw GraphicsException("incompatible GPU device")
+                                }
+                            }
+                        }
+                )
+            }
+            device = Some(owned)
+            loadTexture(-1, "earth-normal.png");
+            loadTexture(-2, "moon-normal.png")
+            loadTexture(-3, "earth-clouds.png");
+            loadTexture(-4, "saturn-rings.png")
+            loadTexture(-5, "uranus-rings.png");
+            loadTexture(-6, "earth-night.jpg")
+        } catch (error: Throwable) {
+            when (renderer) {
+                case Some(val value) -> {
+                    @Unsafe {
+                        nativeClose(value)
+                    };
+                    renderer = None
+                }
+
+                case None -> Unit
+            }
+            device = None
+            owned.close()
+            throw error
+        }
+    }
+
+    public override fun close() {
+        when (renderer) {
+            case Some(val value) -> {
+                renderer = None;
+                @Unsafe {
+                    nativeClose(value)
+                }
+            };
+
+            case None -> Unit
+        }
+        image?.close();
+        image = None
+        buffer?.close();
+        buffer = None
+        device?.close();
+        device = None
+    }
+}
+
+private fun sameVector(a: Vector3, b: Vector3): Boolean = a.x == b.x && a.y == b.y && a.z == b.z
+
+private fun sameScene(a: SceneFrame, b: SceneFrame): Boolean {
+    if (a.time !=
+        b.time ||
+        a.showBelt !=
+        b.showBelt ||
+        a.showOrbits !=
+        b.showOrbits ||
+        !sameVector(a.camera.eye, b.camera.eye) ||
+        !sameVector(a.camera.target, b.camera.target)
+    )
+        return false
+    for (i in 0L..<a.bodies.size)
+        if (a.bodies[i].visible !=
+            b.bodies[i].visible ||
+            a.bodies[i].packet.selected !=
+            b.bodies[i].packet.selected ||
+            !sameVector(a.bodies[i].packet.position, b.bodies[i].packet.position)
+        )
+            return false
+    return true
+}
+
+@Unsafe
+private fun checkRenderer(result: Int) {
+    if (result == 0) throw GraphicsException(String.fromCString(nativeError()))
+}
+
+@Extern(name = "solar_renderer_create")
+private fun nativeCreate(device: Ptr<Unit>, queue: Ptr<Unit>): Ptr<Unit>?
+
+@Extern(name = "solar_renderer_load")
+private fun nativeLoad(renderer: Ptr<Unit>, id: Int, file: Ptr<Int8>): Int
+
+@Extern(name = "solar_renderer_begin")
+private fun nativeBegin(renderer: Ptr<Unit>)
+
+@Extern(name = "solar_renderer_body")
+private fun nativeBody(renderer: Ptr<Unit>, body: BodyPacket)
+
+@Extern(name = "solar_renderer_orbit_point")
+private fun nativeOrbitPoint(renderer: Ptr<Unit>, slot: Int, index: Int, point: Vector3)
+
+@Extern(name = "solar_renderer_orbit_place")
+private fun nativeOrbitPlace(
+    renderer: Ptr<Unit>,
+    slot: Int,
+    center: Vector3,
+    scale: Double,
+    selected: Int
+)
+
+@Extern(name = "solar_renderer_render")
+private fun nativeRender(
+    renderer: Ptr<Unit>,
+    texture: Ptr<Unit>,
+    camera: CameraPacket,
+    et: Double,
+    orbits: Int,
+    belt: Int
+): Int
+
+@Extern(name = "solar_renderer_close")
+private fun nativeClose(renderer: Ptr<Unit>)
+
+@Extern(name = "solar_renderer_error")
+private fun nativeError(): Ptr<Int8>

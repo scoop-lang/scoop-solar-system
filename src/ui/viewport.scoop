@@ -1,0 +1,320 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.graphics.text.*
+import scoop.math.*
+import scoop.platform.time.MonotonicTimeSource
+import scoop.surface.*
+import scoop.time.Duration
+import scoop.ui.*
+import scoop.window.*
+
+internal class SolarViewport(private val model: SolarModel, scope: ComponentScope) :
+    Element<Unit>(scope) {
+    private val camera = model.camera
+    private val resources = scope.resource { ViewportResources() }
+    private val labels = scope.resource { SceneLabels(scope.defaultFonts, model.catalog) }
+    private var previous: Point? = None
+    private var pressed: Point? = None
+    private var panning = false
+    private var size = Size(1280.0, 800.0)
+    private var drawable = true
+    private val area = scope.createArea(focusable = true)
+    private var hoverCandidate: BodyId? = None
+    private var pointer = Point(0.0, 0.0)
+    private val hoverDeadline = scope.createDeadline { revealHover() }
+
+    public override fun onMount() {
+        scope
+            .observeWindowActivity { activity ->
+                drawable = activity.visible && !activity.occluded
+                if (drawable) {
+                    model.updateTime();
+                    scope.requestFrame()
+                }
+            }
+        area.scope.defaultAction = { context, event ->
+            when (event) {
+                case Pointer(
+                    InputPointerEvent.Button(
+                        val pointer,
+                        val button,
+                        ElementState.Pressed,
+                        val clicks
+                    )
+                ) -> {
+                    if (button == MouseButton.Left || button == MouseButton.Middle) {
+                        previous = context.localPosition;
+                        pressed = previous
+                        panning = button == MouseButton.Middle || pointer.state.modifiers.shift
+                        model.hoverOpen.value = false;
+                        hoverDeadline.cancel()
+                        if (clicks >= 2)
+                            when (hit(context.localPosition)) {
+                                case Some(val id) -> model.focus(id, true)
+                                case None -> Unit
+                            }
+                        area.requestFocus();
+                        context.consume()
+                    }
+                }
+
+                case Pointer(InputPointerEvent.Moved(_)) -> {
+                    when (context.localPosition) {
+                        case Some(val point) -> {
+                            pointer = point
+                            when (previous) {
+                                case Some(val last) -> {
+                                    if (panning)
+                                        camera.pan(point.x - last.x, point.y - last.y, size.height)
+                                    else
+                                        camera.rotate(point.x - last.x, point.y - last.y)
+                                    previous = Some(point);
+                                    scope.requestFrame();
+                                    context.consume()
+                                }
+
+                                case None -> hover(hit(Some(point)))
+                            }
+                        }
+
+                        case None -> Unit
+                    }
+                }
+
+                case Pointer(InputPointerEvent.Button(_, _, ElementState.Released, _)) -> {
+                    when (pressed) {
+                        case Some(val start) ->
+                            when (context.localPosition) {
+                                case Some(val finish) ->
+                                    if (abs(start.x - finish.x) + abs(start.y - finish.y) < 5.0) {
+                                        when (hit(Some(finish))) {
+                                            case Some(val id) -> model.selected.value = id;
+                                            case None -> Unit
+                                        }
+                                    }
+                                case None -> Unit
+                            }
+                        case None -> Unit
+                    }
+                    previous = None;
+                    pressed = None
+                }
+
+                case Pointer(InputPointerEvent.Cancelled(_, _)) -> {
+                    previous = None;
+                    pressed = None
+                }
+
+                case Pointer(InputPointerEvent.Left(_)) -> {
+                    hoverDeadline.cancel()
+                }
+
+                case Pointer(InputPointerEvent.Wheel(_, val delta, _, _)) -> {
+                    when (delta) {
+                        case Lines(val x, val y) -> {
+                            if (abs(x) > abs(y) * 0.7)
+                                camera.pan(-x * 32.0, -y * 32.0, size.height)
+                            else
+                                camera.zoom(-y * 0.1)
+                        }
+
+                        case Pixels(val x, val y) -> {
+                            if (abs(x) > abs(y) * 0.7)
+                                camera.pan(-x, -y, size.height)
+                            else
+                                camera.zoom(-y * 0.003)
+                        }
+                    }
+                    model.hoverOpen.value = false;
+                    scope.requestFrame();
+                    context.consume()
+                }
+
+                case Keyboard(val key) -> {
+                    if (key.state ==
+                        ElementState.Pressed &&
+                        !key.modifiers.control &&
+                        !key.modifiers.alt &&
+                        !key.modifiers.superKey
+                    ) {
+                        val step = if (key.modifiers.shift) 12.0 else 40.0
+                        val delta = when (key.logicalKey) {
+                            case Named(NamedKey.ArrowLeft) -> Point(-step, 0.0)
+                            case Named(NamedKey.ArrowRight) -> Point(step, 0.0)
+                            case Named(NamedKey.ArrowUp) -> Point(0.0, -step)
+                            case Named(NamedKey.ArrowDown) -> Point(0.0, step)
+                            else -> Point(0.0, 0.0)
+                        }
+                        if (delta.x != 0.0 || delta.y != 0.0) {
+                            camera.pan(delta.x, delta.y, size.height)
+                            model.hoverOpen.value = false
+                            hoverDeadline.cancel()
+                            scope.requestFrame()
+                            context.consume()
+                        }
+                    }
+                }
+
+                else -> Unit
+            }
+        }
+        scope
+            .transformGesture(area) { event ->
+                when (event) {
+                    case Changed(val sample) -> {
+                        camera.zoom(-log(sample.scaleDelta))
+                        camera.azimuth += sample.rotationDelta
+                        scope.requestFrame()
+                    }
+
+                    else -> Unit
+                }
+            }
+    }
+
+    private fun hit(point: Point?): BodyId? = when (point) {
+        case Some(val value) ->
+            when (model.accepted) {
+                case Some(val frame) -> pick(frame, value, size)
+                case None -> None
+            }
+        case None -> None
+    }
+    private fun hover(candidate: BodyId?) {
+        if (candidate == hoverCandidate && (hoverDeadline.isScheduled || model.hoverOpen.value))
+            return
+        hoverCandidate = candidate
+        hoverDeadline.cancel()
+        when (candidate) {
+            case Some(_) ->
+                if (!model.hoverOpen.value)
+                    hoverDeadline.schedule(MonotonicTimeSource.now() + Duration.milliseconds(200L))
+            case None -> Unit
+        }
+    }
+    private fun revealHover() {
+        val candidate = hit(Some(pointer))
+        if (candidate != hoverCandidate) return
+        when (candidate) {
+            case Some(val id) -> {
+                model.hoverPoint.value = pointer
+                model.hoverBody.value = Some(id)
+                model.hoverOpen.value = true
+            }
+
+            case None -> Unit
+        }
+    }
+
+    public override fun measure(context: MeasureContext, constraints: Constraints): LayoutResult<
+        Unit
+    > = LayoutResult(
+        LayoutMetrics(
+            constraints
+                .constrain(Size(constraints.maxWidth ?: 1280.0, constraints.maxHeight ?: 800.0))
+        ),
+        Unit
+    )
+
+    public override fun scene(context: SceneContext, layout: Unit) {
+        size = context.size
+        val frame = model.frame()
+        context.place(area, Rect(0.0, 0.0, size.width, size.height))
+        context
+            .draw { paint ->
+                resources.paint(paint.canvas, paint.size, frame);
+                labels.paint(paint.canvas, paint.size, frame)
+            }
+        context
+            .onFrameComplete { completed ->
+                if (completed.submission == FrameSubmission.Accepted) {
+                    model.accepted = Some(frame)
+                    if (model.windowWidth.value != completed.size.width)
+                        model.windowWidth.value = completed.size.width
+                    if (model.clock.running && !model.detailOpen.value && drawable)
+                        model.updateTime()
+                }
+            }
+    }
+}
+
+private class SceneLabels(fonts: FontCollection, val catalog: Array<Body>) : Closeable {
+    private val texts = Array<TextLayout>(catalog.size) { index ->
+        Paragraph(
+            fonts,
+            catalog[index].name,
+            textStyle {
+                fontSize = 11.5;
+                color = Color.White.withAlpha(0.82)
+            }
+        )
+            .use { paragraph -> paragraph.layoutUnwrapped() }
+    }
+    fun paint(canvas: Canvas, size: Size, frame: SceneFrame) {
+        val occupied = ArrayList<Rect>()
+        for (pass in 0..<2) {
+            for (i in 0L..<frame.bodies.size) {
+                val body = frame.bodies[i]
+                if (!body.visible) continue
+                if ((body.packet.selected == 1) != (pass == 0)) continue
+                when (project(frame.camera, body.packet.position, body.packet.radii.x, size)) {
+                    case Some(val p) -> {
+                        if (p.point.x <
+                            0.0 ||
+                            p.point.y <
+                            96.0 ||
+                            p.point.x >
+                            size.width ||
+                            p.point.y >
+                            size.height
+                        )
+                            continue
+                        if (pick(frame, p.point, size) != Some(body.body.id)) continue
+                        if (p.radius < 3.0)
+                            canvas.drawCircle(p.point, 2.0, Paint(Color.White.withAlpha(0.7)))
+                        if (frame.showLabels) {
+                            val origin = Point(
+                                p.point.x + max(p.radius, 3.0) + 7.0,
+                                p.point.y - 8.0
+                            )
+                            val bounds = Rect(
+                                origin.x - 3.0,
+                                origin.y - 3.0,
+                                texts[i].size.width + 6.0,
+                                texts[i].size.height + 6.0
+                            )
+                            var available = origin.x + texts[i].size.width < size.width - 12.0
+                            for (other in occupied) {
+                                if (bounds.x <
+                                    other.x +
+                                    other.width &&
+                                    other.x <
+                                    bounds.x +
+                                    bounds.width &&
+                                    bounds.y <
+                                    other.y +
+                                    other.height &&
+                                    other.y <
+                                    bounds.y +
+                                    bounds.height
+                                )
+                                    available = false
+                            }
+                            if (available) {
+                                canvas.drawText(texts[i], origin);
+                                occupied.add(bounds)
+                            }
+                        }
+                    }
+
+                    case None -> Unit
+                }
+            }
+        }
+    }
+    public override fun close() {
+        for (text in texts)
+            text.close()
+    }
+}

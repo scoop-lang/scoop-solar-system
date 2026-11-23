@@ -1,0 +1,77 @@
+package dev.scoop.solar
+
+import scoop.platform.time.*
+
+internal fun monotonicSeconds(): Double {
+    val now = MonotonicTimeSource.now()
+    return now.seconds.toDouble() + now.nanosecondAdjustment.toDouble() * 0.000000001
+}
+
+internal class SimulationClock(
+    initial: Double,
+    val minimum: Double,
+    val maximum: Double,
+    val now: () -> Double = { monotonicSeconds() }
+) {
+    private var anchorTime = limited(initial, minimum, maximum)
+    private var anchorMonotonic = now()
+    var running = false
+    var rate = 86400.0
+    private var dragTime = initial
+    private var dragRunning = false
+    private var dragging = false
+
+    fun sample(): Double {
+        if (!running) return anchorTime
+        val value = anchorTime + rate * (now() - anchorMonotonic)
+        return limited(value, minimum, maximum)
+    }
+
+    fun settleBoundary(): Boolean {
+        val value = sample()
+        if (running && ((rate > 0.0 && value >= maximum) || (rate < 0.0 && value <= minimum))) {
+            pause()
+            return true
+        }
+        return false
+    }
+
+    fun seek(value: Double) {
+        anchorTime = limited(value, minimum, maximum)
+        anchorMonotonic = now()
+    }
+
+    fun setRate(value: Double) {
+        seek(sample())
+        rate = value
+    }
+
+    fun pause() {
+        seek(sample());
+        running = false
+    }
+    fun play() {
+        seek(sample());
+        running = true
+    }
+    fun toggle() {
+        if (running) pause() else play()
+    }
+
+    fun drag(value: Double) {
+        if (!dragging) {
+            dragTime = sample()
+            dragRunning = running
+            dragging = true
+            pause()
+        }
+        seek(value)
+    }
+
+    fun finishDrag(cancelled: Boolean) {
+        if (!dragging) return
+        if (cancelled) seek(dragTime)
+        dragging = false
+        if (dragRunning) play()
+    }
+}

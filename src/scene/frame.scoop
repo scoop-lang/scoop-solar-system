@@ -1,0 +1,184 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.math.*
+
+internal val astronomicalUnit = 149597870.7
+
+@CLayout
+internal struct BodyPacket(
+    val position: Vector3,
+    val axisX: Vector3,
+    val axisY: Vector3,
+    val axisZ: Vector3,
+    val radii: Vector3,
+    val body: Int,
+    val system: Int,
+    val selected: Int,
+    val roughness: Double
+)
+
+internal class DisplayBody(
+    val body: Body,
+    val physical: PhysicalState,
+    val packet: BodyPacket,
+    val visible: Boolean
+)
+
+internal class OrbitTrack(val body: BodyId, val center: BodyId, val points: Array<Vector3>)
+
+internal class PlacedOrbit(
+    val track: OrbitTrack,
+    val center: Vector3,
+    val scale: Double,
+    val selected: Boolean
+)
+
+internal class SceneFrame(
+    val time: Double,
+    val camera: CameraPacket,
+    val bodies: Array<DisplayBody>,
+    val orbits: Array<PlacedOrbit>,
+    val showOrbits: Boolean,
+    val showBelt: Boolean,
+    val showLabels: Boolean
+) {
+    fun find(id: BodyId): DisplayBody {
+        for (body in bodies)
+            if (body.body.id == id) return body
+        throw IllegalArgumentException(Some("Unknown body identity"))
+    }
+}
+
+internal fun displayRadius(body: Body): Double = if (body.id.naif == 10)
+    0.16
+else
+    max(0.0024, 0.035 * pow(body.radius / 6371.0, 0.45))
+
+internal fun shape(body: Body): Vector3 = when (body.id.naif) {
+    case 401 -> Vector3(1.25, 1.0, 0.85)
+    case 402 -> Vector3(1.23, 1.0, 0.83)
+    case 599 -> Vector3(1.022, 1.022, 0.955)
+    case 699 -> Vector3(1.035, 1.035, 0.931)
+    case 799 -> Vector3(1.008, 1.008, 0.985)
+    case 899 -> Vector3(1.006, 1.006, 0.989)
+    else -> Vector3(1.0, 1.0, 1.0)
+}
+
+internal fun systemScale(system: Int): Double = when (system) {
+    case 3 -> 52.0
+    case 4 -> 1350.0
+    case 5 -> 124.0
+    case 6 -> 226.0
+    case 7 -> 218.0
+    case 8 -> 86.0
+    case 9 -> 465.0
+    else -> 1.0
+}
+
+internal fun systemDistance(system: Int): Double = when (system) {
+    case 3 -> 0.74
+    case 4 -> 0.94
+    case 5 -> 5.8
+    case 6 -> 8.5
+    case 7 -> 3.1
+    case 8 -> 0.98
+    case 9 -> 0.32
+    else -> 1.3
+}
+
+internal struct Projection(val point: Point, val radius: Double, val depth: Double)
+
+internal fun project(
+    camera: CameraPacket,
+    position: Vector3,
+    radius: Double,
+    size: Size
+): Projection? {
+    val forward = camera.target.subtract(camera.eye).normalized()
+    val right = forward.cross(camera.up).normalized()
+    val up = right.cross(forward)
+    val offset = position.subtract(camera.eye)
+    val depth = offset.dot(forward)
+    if (depth <= 0.000001) return None
+    val focal = size.height / (2.0 * tan(camera.fieldOfView * 0.5))
+    return Some(
+        Projection(
+            Point(
+                size.width * 0.5 + offset.dot(right) * focal / depth,
+                size.height * 0.5 - offset.dot(up) * focal / depth
+            ),
+            radius * focal / depth,
+            depth
+        )
+    )
+}
+
+internal fun pick(frame: SceneFrame, point: Point, size: Size): BodyId? {
+    val camera = frame.camera
+    val forward = camera.target.subtract(camera.eye).normalized()
+    val right = forward.cross(camera.up).normalized()
+    val up = right.cross(forward)
+    val focal = size.height / (2.0 * tan(camera.fieldOfView * 0.5))
+    val direction = forward
+        .add(right.multiply((point.x - size.width * 0.5) / focal))
+        .add(up.multiply((size.height * 0.5 - point.y) / focal))
+        .normalized()
+    var nearest = Double.POSITIVE_INFINITY
+    var selected: BodyId? = None
+    for (body in frame.bodies) {
+        if (!body.visible) continue
+        val packet = body.packet
+        val offset = camera.eye.subtract(packet.position)
+        val origin = Vector3(
+            offset.dot(packet.axisX) / packet.radii.x,
+            offset.dot(packet.axisY) / packet.radii.y, offset.dot(packet.axisZ) / packet.radii.z
+        )
+        val ray = Vector3(
+            direction.dot(packet.axisX) / packet.radii.x,
+            direction.dot(packet.axisY) / packet.radii.y, direction.dot(packet.axisZ) /
+                packet.radii.z
+        )
+        val a = ray.dot(ray)
+        val b = origin.dot(ray)
+        val c = origin.dot(origin) - 1.0
+        val discriminant = b * b - a * c
+        if (discriminant >= 0.0) {
+            val distance = (-b - sqrt(discriminant)) / a
+            if (distance > 0.0 && distance < nearest) {
+                nearest = distance;
+                selected = Some(body.body.id)
+            }
+        }
+        if (packet.body == 699 || packet.body == 799) {
+            val denominator = direction.dot(packet.axisZ)
+            if (abs(denominator) > 0.000001) {
+                val distance = -offset.dot(packet.axisZ) / denominator
+                val radius = offset.add(direction.multiply(distance)).length() / packet.radii.x
+                val inner = if (packet.body == 699) 1.23 else 1.64
+                val outer = if (packet.body == 699) 2.4 else 2.0
+                if (distance > 0.0 && distance < nearest && radius >= inner && radius <= outer) {
+                    nearest = distance;
+                    selected = Some(body.body.id)
+                }
+            }
+        }
+    }
+    // A small marker can be selected only before the nearest actual surface.
+    for (body in frame.bodies) {
+        if (!body.visible) continue
+        when (project(camera, body.packet.position, body.packet.radii.x, size)) {
+            case Some(val marker) -> {
+                val dx = point.x - marker.point.x
+                val dy = point.y - marker.point.y
+                if (marker.radius < 4.0 && dx * dx + dy * dy < 36.0 && marker.depth < nearest) {
+                    nearest = marker.depth;
+                    selected = Some(body.body.id)
+                }
+            }
+
+            case None -> Unit
+        }
+    }
+    return selected
+}

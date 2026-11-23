@@ -1,0 +1,244 @@
+{
+  "repository": "https://github.com/CelestiaProject/CelestiaContent",
+  "revision": "1bbbf41ed4639a17fd9a884fd843e425caedd9a3",
+  "coordinate_convention": "Equirectangular, north at top; longitude mapping is adapted by body in the renderer.",
+  "preparation": "Original maps; no generative filling. GPU mipmaps are generated on loading.",
+  "assets": [
+    {
+      "file": "gstar.jpg",
+      "path": "textures/hires/gstar.jpg",
+      "notice": "textures/hires/gstar.jpg.license",
+      "renderer_id": 10
+    },
+    {
+      "file": "mercury.jpg",
+      "path": "textures/hires/mercury.jpg",
+      "notice": "README",
+      "renderer_id": 199
+    },
+    {
+      "file": "venus-clouds.jpg",
+      "path": "textures/medres/venus-clouds.jpg",
+      "notice": "README",
+      "renderer_id": 299
+    },
+    {
+      "file": "earth.png",
+      "path": "textures/hires/earth.png",
+      "notice": "README",
+      "renderer_id": 399
+    },
+    {
+      "file": "earth-clouds.png",
+      "path": "textures/hires/earth-clouds.png",
+      "notice": "README",
+      "renderer_id": -3
+    },
+    {
+      "file": "earth-normal.png",
+      "path": "textures/medres/earth-normal.png",
+      "notice": "README",
+      "renderer_id": -1
+    },
+    {
+      "file": "earth-night.jpg",
+      "path": "textures/hires/earth-night.jpg",
+      "notice": "README",
+      "renderer_id": -6
+    },
+    {
+      "file": "moon.jpg",
+      "path": "textures/hires/moon.jpg",
+      "notice": "README",
+      "renderer_id": 301
+    },
+    {
+      "file": "moon-normal.png",
+      "path": "textures/medres/moon-normal.png",
+      "notice": "README",
+      "renderer_id": -2
+    },
+    {
+      "file": "mars.jpg",
+      "path": "textures/hires/mars.jpg",
+      "notice": "README",
+      "renderer_id": 499
+    },
+    {
+      "file": "jupiter.jpg",
+      "path": "textures/hires/jupiter.jpg",
+      "notice": "textures/hires/jupiter.jpg.license",
+      "renderer_id": 599
+    },
+    {
+      "file": "saturn.jpg",
+      "path": "textures/hires/saturn.jpg",
+      "notice": "textures/hires/saturn.jpg.license",
+      "renderer_id": 699
+    },
+    {
+      "file": "saturn-rings.png",
+      "path": "textures/hires/saturn-rings.png",
+      "notice": "README",
+      "renderer_id": -4
+    },
+    {
+      "file": "uranus.jpg",
+      "path": "textures/hires/uranus.jpg",
+      "notice": "textures/hires/uranus.jpg.license",
+      "renderer_id": 799
+    },
+    {
+      "file": "uranus-rings.png",
+      "path": "textures/hires/uranus-rings.png",
+      "notice": "README",
+      "renderer_id": -5
+    },
+    {
+      "file": "neptune.jpg",
+      "path": "textures/hires/neptune.jpg",
+      "notice": "textures/hires/neptune.jpg.license",
+      "renderer_id": 899
+    },
+    {
+      "file": "pluto.jpg",
+      "path": "textures/hires/pluto.jpg",
+      "notice": "textures/hires/pluto.jpg.license",
+      "renderer_id": 999
+    },
+    {
+      "file": "charon.jpg",
+      "path": "textures/hires/charon.jpg",
+      "notice": "textures/hires/charon.jpg.license",
+      "renderer_id": 901
+    },
+    {
+      "file": "phobos.jpg",
+      "path": "textures/hires/phobos.jpg",
+      "notice": "textures/hires/phobos.jpg.license",
+      "renderer_id": 401
+    },
+    {
+      "file": "deimos.jpg",
+      "path": "textures/hires/deimos.jpg",
+      "notice": "textures/hires/deimos.jpg.license",
+      "renderer_id": 402
+    },
+    {
+      "file": "io.png",
+      "path": "textures/hires/io.png",
+      "notice": "textures/hires/io.png.license",
+      "renderer_id": 501
+    },
+    {
+      "file": "europa.jpg",
+      "path": "textures/hires/europa.jpg",
+      "notice": "README",
+      "renderer_id": 502
+    },
+    {
+      "file": "ganymede.jpg",
+      "path": "textures/hires/ganymede.jpg",
+      "notice": "textures/hires/ganymede.jpg.license",
+      "renderer_id": 503
+    },
+    {
+      "file": "callisto.jpg",
+      "path": "textures/hires/callisto.jpg",
+      "notice": "README",
+      "renderer_id": 504
+    },
+    {
+      "file": "mimas.jpg",
+      "path": "textures/hires/mimas.jpg",
+      "notice": "README",
+      "renderer_id": 601
+    },
+    {
+      "file": "enceladus.jpg",
+      "path": "textures/hires/enceladus.jpg",
+      "notice": "README",
+      "renderer_id": 602
+    },
+    {
+      "file": "tethys.jpg",
+      "path": "textures/hires/tethys.jpg",
+      "notice": "README",
+      "renderer_id": 603
+    },
+    {
+      "file": "dione.jpg",
+      "path": "textures/hires/dione.jpg",
+      "notice": "README",
+      "renderer_id": 604
+    },
+    {
+      "file": "rhea.jpg",
+      "path": "textures/hires/rhea.jpg",
+      "notice": "README",
+      "renderer_id": 605
+    },
+    {
+      "file": "titan-clouds.jpg",
+      "path": "textures/hires/titan-clouds.jpg",
+      "notice": "textures/hires/titan-clouds.jpg.license",
+      "renderer_id": 606
+    },
+    {
+      "file": "iapetus.jpg",
+      "path": "textures/hires/iapetus.jpg",
+      "notice": "README",
+      "renderer_id": 608
+    },
+    {
+      "file": "ariel.jpg",
+      "path": "textures/hires/ariel.jpg",
+      "notice": "textures/hires/ariel.jpg.license",
+      "renderer_id": 701
+    },
+    {
+      "file": "umbriel.jpg",
+      "path": "textures/medres/umbriel.jpg",
+      "notice": "textures/medres/umbriel.jpg.license",
+      "renderer_id": 702
+    },
+    {
+      "file": "titania.jpg",
+      "path": "textures/medres/titania.jpg",
+      "notice": "textures/medres/titania.jpg.license",
+      "renderer_id": 703
+    },
+    {
+      "file": "oberon.jpg",
+      "path": "textures/medres/oberon.jpg",
+      "notice": "textures/medres/oberon.jpg.license",
+      "renderer_id": 704
+    },
+    {
+      "file": "miranda.jpg",
+      "path": "textures/hires/miranda.jpg",
+      "notice": "textures/hires/miranda.jpg.license",
+      "renderer_id": 705
+    },
+    {
+      "file": "triton.jpg",
+      "path": "textures/hires/triton.jpg",
+      "notice": "textures/hires/triton.jpg.license",
+      "renderer_id": 801
+    }
+  ],
+  "notices": [
+    "README",
+    "LICENSE.md",
+    "LICENSES/CC-BY-3.0.txt",
+    "LICENSES/CC-BY-4.0.txt",
+    "LICENSES/CC-BY-NC-SA-3.0.txt",
+    "LICENSES/CC-BY-SA-3.0-IGO.txt",
+    "LICENSES/CC-BY-SA-3.0.txt",
+    "LICENSES/CC-BY-SA-4.0.txt",
+    "LICENSES/CC0-1.0.txt",
+    "LICENSES/GPL-2.0-or-later.txt",
+    "LICENSES/JPL-image.txt",
+    "LICENSES/LicenseRef-CC-BY-NC-3.0-IGO.txt"
+  ]
+}

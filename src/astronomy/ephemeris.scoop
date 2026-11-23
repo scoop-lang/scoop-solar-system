@@ -1,0 +1,132 @@
+package dev.scoop.solar
+
+@CLayout
+internal struct PhysicalState(
+    val position: Vector3,
+    val velocity: Vector3,
+    val axisX: Vector3,
+    val axisY: Vector3,
+    val axisZ: Vector3,
+    val valid: Int
+)
+
+@CLayout
+internal struct EphemerisTime(val value: Double, val valid: Int)
+
+@CLayout
+internal struct ReferenceOrbit(
+    val periapsis: Double,
+    val eccentricity: Double,
+    val inclination: Double,
+    val node: Double,
+    val argument: Double,
+    val anomaly: Double,
+    val epoch: Double,
+    val gm: Double,
+    val period: Double,
+    val valid: Int
+)
+
+internal class Ephemeris : Closeable {
+    val resources: String = openResources()
+    val minimum: Double = parse("1900-01-01T00:00:00")
+    val maximum: Double = parse("2100-01-01T00:00:00")
+    private fun openResources(): String {
+        val rootPath = resourceRoot()
+        @Unsafe {
+            rootPath
+                .withCString { root ->
+                    @Unsafe {
+                        if (nativeSpiceOpen(root) == 0) spiceFailure()
+                    }
+                }
+        }
+        return rootPath
+    }
+
+    fun parse(utc: String): Double {
+        @Unsafe {
+            return utc
+                .withCString { text ->
+                    @Unsafe {
+                        val result = nativeParse(text)
+                        if (result.valid == 0) spiceFailure()
+                        return@withCString result.value
+                    }
+                }
+        }
+    }
+
+    fun format(et: Double): String {
+        @Unsafe {
+            val text = nativeFormat(et) ?: spiceFailure()
+            return String.fromCString(text)
+        }
+    }
+
+    fun state(id: BodyId, et: Double): PhysicalState {
+        @Unsafe {
+            val result = nativeState(id.naif, et)
+            if (result.valid == 0) spiceFailure()
+            return result
+        }
+    }
+
+    fun orbit(id: BodyId, center: BodyId, et: Double): ReferenceOrbit {
+        @Unsafe {
+            val result = nativeOrbit(id.naif, center.naif, et)
+            if (result.valid == 0) spiceFailure()
+            return result
+        }
+    }
+
+    fun orbitPoint(orbit: ReferenceOrbit, fraction: Double): Vector3 {
+        @Unsafe {
+            return nativeConic(orbit, fraction)
+        }
+    }
+
+    public override fun close() {
+        @Unsafe {
+            nativeSpiceClose()
+        }
+    }
+}
+
+internal fun resourceRoot(): String {
+    @Unsafe {
+        return String.fromCString(nativeResourceRoot())
+    }
+}
+
+@Unsafe
+private fun spiceFailure(): Nothing {
+    throw IllegalStateException(Some(String.fromCString(nativeSpiceError())))
+}
+
+@Extern(name = "solar_resource_root")
+private fun nativeResourceRoot(): Ptr<Int8>
+
+@Extern(name = "solar_spice_open")
+private fun nativeSpiceOpen(root: Ptr<Int8>): Int
+
+@Extern(name = "solar_spice_close")
+private fun nativeSpiceClose()
+
+@Extern(name = "solar_spice_error")
+private fun nativeSpiceError(): Ptr<Int8>
+
+@Extern(name = "solar_spice_parse")
+private fun nativeParse(utc: Ptr<Int8>): EphemerisTime
+
+@Extern(name = "solar_spice_format")
+private fun nativeFormat(et: Double): Ptr<Int8>?
+
+@Extern(name = "solar_spice_state")
+private fun nativeState(body: Int, et: Double): PhysicalState
+
+@Extern(name = "solar_spice_orbit")
+private fun nativeOrbit(body: Int, center: Int, et: Double): ReferenceOrbit
+
+@Extern(name = "solar_spice_conic")
+private fun nativeConic(orbit: ReferenceOrbit, fraction: Double): Vector3
