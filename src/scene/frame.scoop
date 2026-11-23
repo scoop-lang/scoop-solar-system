@@ -12,6 +12,8 @@ internal struct BodyPacket(
     val axisY: Vector3,
     val axisZ: Vector3,
     val radii: Vector3,
+    val physicalPosition: Vector3,
+    val physicalRadii: Vector3,
     val body: Int,
     val system: Int,
     val selected: Int,

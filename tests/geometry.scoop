@@ -27,7 +27,7 @@ private class GeometryTests {
         return DisplayBody(
             body,
             PhysicalState(position, zero, x, y, z, 1),
-            BodyPacket(position, x, y, z, radii, id, 3, 0, 0.9),
+            BodyPacket(position, x, y, z, radii, position, radii, id, 3, 0, 0.9),
             true
         )
     }

@@ -34,5 +34,5 @@ test-native:
 	xcrun clang -std=c11 $(NATIVE_FLAGS) native/astronomy/ephemeris.c tests-native/ephemeris.c vendor/cspice/lib/cspice.a -o target/check-ephemeris
 	target/check-ephemeris assets/prepared
 	python3 scripts/check_reference.py
-	xcrun clang -fobjc-arc $(NATIVE_FLAGS) tests-native/metal.m native/macos/renderer.m native/macos/scene.m native/macos/shaders.m -framework Foundation -framework Metal -framework MetalKit -o target/check-metal
+	xcrun clang -fobjc-arc $(NATIVE_FLAGS) tests-native/metal.m tests-native/shadows.m native/astronomy/ephemeris.c native/macos/renderer.m native/macos/scene.m native/macos/shaders.m vendor/cspice/lib/cspice.a -framework Foundation -framework Metal -framework MetalKit -o target/check-metal
 	target/check-metal assets/prepared

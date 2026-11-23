@@ -151,7 +151,7 @@ internal fun details(model: SolarModel): View {
             label(
                 "冻结时刻  " +
                     model.ephemeris.format(model.time.value) +
-                    " UTC\n地图为代表性外观；阴影遵循展示几何，不用于精确日月食预报。"
+                    " UTC\n地图为代表性外观；光照与阴影按真实位置和尺寸计算，食现象为几何近似。"
             ) {
                 style {
                     fontSize = Some(10.0);

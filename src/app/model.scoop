@@ -172,7 +172,8 @@ internal class SolarModel : Closeable {
                 .multiply(1.0 / astronomicalUnit)
             val packet = BodyPacket(
                 position, physical.axisX, physical.axisY, physical.axisZ,
-                shape(entry).multiply(displayRadius(entry)), entry.id.naif, entry.system,
+                shape(entry).multiply(displayRadius(entry)),
+                physical.position, shape(entry).multiply(entry.radius), entry.id.naif, entry.system,
                 if (entry.id == selected.value) 1 else 0, if (entry.id.naif == 399) 0.62 else 0.89
             )
             DisplayBody(entry, physical, packet, !entry.moon || entry.system == system)

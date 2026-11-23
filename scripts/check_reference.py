@@ -53,20 +53,23 @@ def main() -> None:
     adapter.solar_spice_error.restype = ctypes.c_char_p
     if not adapter.solar_spice_open(str(ROOT / "assets/prepared").encode()):
         raise RuntimeError(adapter.solar_spice_error().decode())
-    samples = json.loads((ROOT / "tests-native/horizons-j2000.json").read_text())
     try:
-        for reference in samples["samples"]:
-            state = adapter.solar_spice_state(reference["naif"], 0.0)
-            if not state.valid:
-                raise RuntimeError(adapter.solar_spice_error().decode())
-            position = distance(state.position, reference["position_km"])
-            velocity = distance(state.velocity, reference["velocity_km_s"])
-            print(
-                f"NAIF {reference['naif']}: position {position:.6f} km; velocity {velocity:.9f} km/s"
-            )
-            # Horizons can use a different DE planetary solution from the bundled DE442s.
-            assert position < 5.0
-            assert velocity < 0.00001
+        for filename in ("horizons-j2000.json", "horizons-2027-01-07.json"):
+            samples = json.loads((ROOT / "tests-native" / filename).read_text())
+            for reference in samples["samples"]:
+                state = adapter.solar_spice_state(
+                    reference["naif"], samples["epoch_et"]
+                )
+                if not state.valid:
+                    raise RuntimeError(adapter.solar_spice_error().decode())
+                position = distance(state.position, reference["position_km"])
+                velocity = distance(state.velocity, reference["velocity_km_s"])
+                print(
+                    f"{filename} NAIF {reference['naif']}: position {position:.6f} km; velocity {velocity:.9f} km/s"
+                )
+                # Horizons can use a different DE solution from the bundled DE442s.
+                assert position < samples["position_tolerance_km"]
+                assert velocity < 0.00001
     finally:
         adapter.solar_spice_close()
 

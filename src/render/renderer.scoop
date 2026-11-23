@@ -86,13 +86,12 @@ internal class ViewportResources : Closeable {
         @Unsafe {
             nativeBegin(native)
         }
-        for (body in frame.bodies)
-            if (body.visible) {
-                loadTexture(body.body.id.naif, body.body.texture)
-                @Unsafe {
-                    nativeBody(native, body.packet)
-                }
+        for (body in frame.bodies) {
+            if (body.visible) loadTexture(body.body.id.naif, body.body.texture)
+            @Unsafe {
+                nativeBody(native, body.packet, if (body.visible) 1 else 0)
             }
+        }
         for (index in 0L..<frame.orbits.size) {
             val placed = frame.orbits[index]
             if (index >= tracks.size || !(tracks[index] === placed.track)) {
@@ -237,7 +236,7 @@ private fun nativeLoad(renderer: Ptr<Unit>, id: Int, file: Ptr<Int8>): Int
 private fun nativeBegin(renderer: Ptr<Unit>)
 
 @Extern(name = "solar_renderer_body")
-private fun nativeBody(renderer: Ptr<Unit>, body: BodyPacket)
+private fun nativeBody(renderer: Ptr<Unit>, body: BodyPacket, visible: Int)
 
 @Extern(name = "solar_renderer_orbit_point")
 private fun nativeOrbitPoint(renderer: Ptr<Unit>, slot: Int, index: Int, point: Vector3)

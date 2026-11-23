@@ -4,8 +4,8 @@
 
 enum { SOLAR_MAX_BODIES = 32, SOLAR_ORBIT_POINTS = 257 };
 typedef struct {
-  matrix_float4x4 vp, model, normal;
-  vector_float4 sun, material, tint, eye;
+  matrix_float4x4 vp, model, normal, physical;
+  vector_float4 sun, material, tint, eye, light_sun;
   vector_float4 spheres[SOLAR_MAX_BODIES];
   vector_float4 ring_center[2], ring_normal[2], ring_size[2];
   vector_float4 options;
@@ -22,8 +22,11 @@ typedef struct {
 @interface SolarMetalRenderer : NSObject {
 @public
   SolarBody bodies[SOLAR_MAX_BODIES];
+  int visible[SOLAR_MAX_BODIES];
   SolarOrbitLine orbits[SOLAR_MAX_BODIES];
   int bodyCount, orbitCount;
+  SolarVector sunPosition;
+  double sunRadius;
 }
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> queue;

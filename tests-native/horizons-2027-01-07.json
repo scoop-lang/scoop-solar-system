@@ -1,0 +1,40 @@
+{
+  "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+  "retrieved": "2026-11-24",
+  "time": "2027-01-07T10:05:08 UTC; JD 2461412.9210322234 TDB",
+  "epoch_et": 852588377.1840985,
+  "center": 10,
+  "frame": "Ecliptic of J2000.0 / ICRF",
+  "correction": "NONE",
+  "samples": [
+    {
+      "naif": 399,
+      "position_km": [
+        -41759754.37375921,
+        141058751.6430394,
+        -8328.48389146477
+      ],
+      "velocity_km_s": [
+        -29.05938661253987,
+        -8.571363555952873,
+        -0.0001411808160329819
+      ],
+      "query_url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27399%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&TLIST=%272461412.9210322234%27&TIME_TYPE=%27TDB%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&OUT_UNITS=%27KM-S%27&VEC_CORR=%27NONE%27&VEC_TABLE=%272%27&CSV_FORMAT=%27YES%27&OBJ_DATA=%27NO%27"
+    },
+    {
+      "naif": 301,
+      "position_km": [
+        -41676443.26690434,
+        140661437.3583194,
+        -31309.43844999373
+      ],
+      "velocity_km_s": [
+        -28.11022058252756,
+        -8.375684777693309,
+        0.06844021093520114
+      ],
+      "query_url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27301%27&EPHEM_TYPE=%27VECTORS%27&CENTER=%27500%4010%27&TLIST=%272461412.9210322234%27&TIME_TYPE=%27TDB%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&OUT_UNITS=%27KM-S%27&VEC_CORR=%27NONE%27&VEC_TABLE=%272%27&CSV_FORMAT=%27YES%27&OBJ_DATA=%27NO%27"
+    }
+  ],
+  "position_tolerance_km": 0.05
+}

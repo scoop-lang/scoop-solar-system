@@ -35,29 +35,52 @@ SolarUniforms solar_uniforms(SolarMetalRenderer *r, SolarCamera camera,
   u.options.x = r->bodyCount;
   // A luminance/alpha PNG is an RG texture; its opacity lives in green.
   u.options.w = r.textures[@(-3)].pixelFormat == MTLPixelFormatRG8Unorm ? 1 : 0;
-  for (int i = 0; i < r->bodyCount; i++) {
-    SolarBody body = r->bodies[i];
-    u.spheres[i] = point(relative(body.position, camera.eye));
-    u.spheres[i].w = body.body == 10
-                         ? -1
-                         : fmax(body.radii.x, fmax(body.radii.y, body.radii.z));
-    int ring = body.body == 699 ? 0 : (body.body == 799 ? 1 : -1);
-    if (ring >= 0) {
-      u.ring_center[ring] = u.spheres[i];
-      u.ring_normal[ring] = point(vector(body.axis_z));
-      u.ring_size[ring] =
-          (vector_float4){body.radii.x * (ring == 0 ? 1.23 : 1.64),
-                          body.radii.x * (ring == 0 ? 2.4 : 2.0), 1, 0};
-    }
-  }
   return u;
 }
 static void uniforms(id<MTLRenderCommandEncoder> encoder, SolarUniforms *u) {
   [encoder setVertexBytes:u length:sizeof(*u) atIndex:0];
   [encoder setFragmentBytes:u length:sizeof(*u) atIndex:0];
 }
+
+static void lighting(SolarMetalRenderer *r, SolarUniforms *u,
+                     SolarBody receiver) {
+  // Subtract the physical origin in double precision before uploading floats.
+  u->light_sun = point(relative(r->sunPosition, receiver.physical_position));
+  u->light_sun.w = r->sunRadius;
+  u->physical = matrix_identity_float4x4;
+  u->physical.columns[0] =
+      point(vector(receiver.axis_x) * receiver.physical_radii.x);
+  u->physical.columns[0].w = 0;
+  u->physical.columns[1] =
+      point(vector(receiver.axis_y) * receiver.physical_radii.y);
+  u->physical.columns[1].w = 0;
+  u->physical.columns[2] =
+      point(vector(receiver.axis_z) * receiver.physical_radii.z);
+  u->physical.columns[2].w = 0;
+  u->ring_size[0] = u->ring_size[1] = (vector_float4){0};
+  for (int i = 0; i < r->bodyCount; i++) {
+    SolarBody body = r->bodies[i];
+    u->spheres[i] =
+        point(relative(body.physical_position, receiver.physical_position));
+    u->spheres[i].w =
+        body.body == 10
+            ? -1
+            : fmax(body.physical_radii.x,
+                   fmax(body.physical_radii.y, body.physical_radii.z));
+    int ring = body.body == 699 ? 0 : (body.body == 799 ? 1 : -1);
+    if (ring >= 0) {
+      u->ring_center[ring] = u->spheres[i];
+      u->ring_normal[ring] = point(vector(body.axis_z));
+      u->ring_size[ring] = (vector_float4){
+          body.physical_radii.x * (ring == 0 ? 1.23 : 1.64),
+          body.physical_radii.x * (ring == 0 ? 2.4 : 2.0), 1, 0};
+    }
+  }
+}
+
 static void transform(SolarMetalRenderer *r, SolarUniforms *u, SolarBody body,
                       SolarCamera camera, int index) {
+  lighting(r, u, body);
   u->model = matrix_identity_float4x4;
   u->model.columns[0] = point(vector(body.axis_x) * body.radii.x);
   u->model.columns[0].w = 0;
@@ -131,6 +154,8 @@ void solar_draw_scene(SolarMetalRenderer *r, id<MTLRenderCommandEncoder> e,
   [e setFragmentTexture:r.textures[@(-5)] atIndex:4];
   [e setFragmentTexture:r.textures[@(-6)] atIndex:5];
   for (int i = 0; i < r->bodyCount; i++) {
+    if (!r->visible[i])
+      continue;
     SolarBody body = r->bodies[i];
     transform(r, &u, body, camera, i);
     uniforms(e, &u);
@@ -144,7 +169,7 @@ void solar_draw_scene(SolarMetalRenderer *r, id<MTLRenderCommandEncoder> e,
   [e setRenderPipelineState:r.ring];
   for (int i = 0; i < r->bodyCount; i++) {
     SolarBody body = r->bodies[i];
-    if (body.body != 699 && body.body != 799)
+    if (!r->visible[i] || (body.body != 699 && body.body != 799))
       continue;
     transform(r, &u, body, camera, i);
     u.tint = (vector_float4){body.body == 699 ? 1.23 : 1.64,

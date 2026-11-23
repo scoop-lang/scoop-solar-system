@@ -4,6 +4,9 @@
 #include <assert.h>
 #include <string.h>
 
+void check_shadows(void *renderer, id<MTLDevice> device,
+                   id<MTLCommandQueue> queue, const char *resource_root);
+
 static void finish(id<MTLCommandQueue> queue) {
   id<MTLCommandBuffer> barrier = [queue commandBuffer];
   [barrier commit];
@@ -65,15 +68,29 @@ int main(int argc, char **argv) {
       int id = [entry[@"renderer_id"] intValue];
       if (id < 0)
         continue;
-      SolarBody body = {
-          {3, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {.45, .45, .45},
-          id,        0,         0,         .8};
+      SolarBody sun = {.axis_x = {1, 0, 0},
+                       .axis_y = {0, 1, 0},
+                       .axis_z = {0, 0, 1},
+                       .radii = {.45, .45, .45},
+                       .physical_radii = {696340, 696340, 696340},
+                       .body = 10};
+      SolarBody body = {.position = {3, 0, 0},
+                        .axis_x = {1, 0, 0},
+                        .axis_y = {0, 1, 0},
+                        .axis_z = {0, 0, 1},
+                        .radii = {.45, .45, .45},
+                        .physical_position = {3 * 149597870.7, 0, 0},
+                        .physical_radii = {6371, 6371, 6371},
+                        .body = id,
+                        .roughness = .8};
       if (id == 10)
-        body.position.x = 0;
+        body = sun;
       SolarCamera camera = {
           {body.position.x - 2.5, -.6, .65}, body.position, {0, 0, 1}, .72};
       solar_renderer_begin(r);
-      solar_renderer_body(r, body);
+      if (id != 10)
+        solar_renderer_body(r, sun, 0);
+      solar_renderer_body(r, body, 1);
       assert(
           solar_renderer_render(r, (__bridge void *)target, camera, 0, 0, 0));
       finish(queue);
@@ -120,6 +137,7 @@ int main(int argc, char **argv) {
       rendered++;
     }
     assert(rendered == 31);
+    check_shadows(r, device, queue, argv[1]);
     solar_renderer_close(r);
     printf("Metal: five pipelines, 37 maps and %u body frames passed on %s\n",
            rendered, device.name.UTF8String);

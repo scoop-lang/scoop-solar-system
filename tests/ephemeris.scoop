@@ -7,6 +7,61 @@ import scoop.graphics.*
 @Test
 private class EphemerisTests {
     @Test
+    fun JanuaryNewMoonKeepsPhysicalGeometryAcrossViews() {
+        SolarModel()
+            .use { model ->
+                model.seek(model.ephemeris.parse("2027-01-07T10:05:08"))
+                val overview = model.frame()
+                val earth = overview.find(BodyId(399))
+                val moon = overview.find(BodyId(301))
+                // Independent Horizons geometric vectors at the reported UTC instant.
+                val earthReference = Vector3(
+                    -41759754.37375921,
+                    141058751.6430394,
+                    -8328.48389146477
+                )
+                val moonReference = Vector3(
+                    -41676443.26690434,
+                    140661437.3583194,
+                    -31309.43844999373
+                )
+                assertTrue(earth.physical.position.subtract(earthReference).length() < 0.05)
+                assertTrue(moon.physical.position.subtract(moonReference).length() < 0.05)
+                val offset = moon.physical.position.subtract(earth.physical.position)
+                assertTrue(offset.z < -22000.0)
+                val shadowAxis = moon.physical.position.normalized()
+                val moonToEarth = offset.multiply(-1.0)
+                val miss = moonToEarth
+                    .subtract(shadowAxis.multiply(moonToEarth.dot(shadowAxis)))
+                    .length()
+                assertTrue(miss > 40000.0 && miss < 40500.0)
+                assertFalse(moon.visible)
+
+                model.focus(BodyId(399))
+                val local = model.frame()
+                val localEarth = local.find(BodyId(399))
+                val localMoon = local.find(BodyId(301))
+                assertTrue(localMoon.visible)
+                assertTrue(
+                    localEarth.packet.physicalPosition.subtract(earth.physical.position).length() ==
+                        0.0
+                )
+                assertTrue(
+                    localMoon.packet.physicalPosition.subtract(moon.physical.position).length() ==
+                        0.0
+                )
+                assertEquals(6371.0, localEarth.packet.physicalRadii.x)
+                assertEquals(1737.4, localMoon.packet.physicalRadii.x)
+                val displayDirection = localMoon
+                    .packet
+                    .position
+                    .subtract(localEarth.packet.position)
+                    .normalized()
+                assertTrue(displayDirection.subtract(offset.normalized()).length() < 1e-10)
+            }
+    }
+
+    @Test
     fun allSystemsCanBeFocusedAndSeekIsOrderIndependent() {
         SolarModel()
             .use { model ->

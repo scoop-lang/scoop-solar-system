@@ -102,11 +102,19 @@ void solar_renderer_begin(void *opaque) {
   SolarMetalRenderer *r = (__bridge SolarMetalRenderer *)opaque;
   r->bodyCount = 0;
   r->orbitCount = 0;
+  r->sunPosition = (SolarVector){0, 0, 0};
+  r->sunRadius = 0;
 }
-void solar_renderer_body(void *opaque, SolarBody body) {
+void solar_renderer_body(void *opaque, SolarBody body, int32_t visible) {
   SolarMetalRenderer *r = (__bridge SolarMetalRenderer *)opaque;
-  if (r->bodyCount < SOLAR_MAX_BODIES)
+  if (r->bodyCount < SOLAR_MAX_BODIES) {
+    r->visible[r->bodyCount] = visible;
     r->bodies[r->bodyCount++] = body;
+    if (body.body == 10) {
+      r->sunPosition = body.physical_position;
+      r->sunRadius = body.physical_radii.x;
+    }
+  }
 }
 void solar_renderer_orbit_point(void *opaque, int32_t slot, int32_t index,
                                 SolarVector point) {

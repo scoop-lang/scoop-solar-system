@@ -12,7 +12,10 @@ typedef struct {
 } SolarCamera;
 
 typedef struct {
+  // Display positions and radii use AU-sized scene units.
   SolarVector position, axis_x, axis_y, axis_z, radii;
+  // Physical geometry uses Sun-centered ECLIPJ2000 positions and radii in km.
+  SolarVector physical_position, physical_radii;
   int32_t body, system, selected;
   double roughness;
 } SolarBody;
@@ -20,7 +23,8 @@ typedef struct {
 void *solar_renderer_create(void *device, void *queue);
 int32_t solar_renderer_load(void *renderer, int32_t body, const char *filename);
 void solar_renderer_begin(void *renderer);
-void solar_renderer_body(void *renderer, SolarBody body);
+// Supply every physical body, including the Sun, even when its mesh is hidden.
+void solar_renderer_body(void *renderer, SolarBody body, int32_t visible);
 void solar_renderer_orbit_point(void *renderer, int32_t slot, int32_t index,
                                 SolarVector point);
 void solar_renderer_orbit_place(void *renderer, int32_t slot,
