@@ -1,6 +1,6 @@
 # 实施与验收
 
-日期：2026-11-24。macOS Apple Silicon 首版已完成应用实现、星历和纹理准备、原生构建与 `.app` 打包。2026-11-25 增加 Linux x86_64 GNU（GTK 4 / Wayland、GLES 3）后端、资源定位与 deb 打包，验证记录见第 8 节。以下记录实际实现和验证，不将其他平台接口的存在视为已经支持其他系统。
+日期：2026-11-24。macOS Apple Silicon 首版已完成应用实现、星历和纹理准备、原生构建与 `.app` 打包。2026-11-25 增加 Linux x86_64 GNU（GTK 4 / Wayland、GLES 3）后端、资源定位与 deb 打包，验证记录见第 8 节；同日增加 Windows x86_64（MSVC UCRT、D3D12）后端、资源定位与 NSIS 打包，验证记录见第 9 节。以下记录实际实现和验证，不将其他平台接口的存在视为已经支持其他系统。
 
 ## 1. 实际目录与职责
 
@@ -10,18 +10,19 @@
 | `src/astronomy/` | 31 个天体的资料、类型化身份、CSPICE 适配、模拟时钟 |
 | `src/scene/` | Double 向量、相机、物理／展示变换、帧快照、投影与拾取 |
 | `src/render/` | GPU 设备、输出缓存、资源所有权与 C ABI 后端调用 |
-| `platform/darwin/`、`platform/linux/` | 各平台唯一的原生 GPU 句柄借用：目标格式、Metal／EGL 设备与纹理、关闭时的 context 要求 |
+| `platform/darwin/`、`platform/linux/`、`platform/windows/` | 各平台唯一的原生 GPU 句柄借用：目标格式、Metal／EGL／D3D12 设备与纹理、关闭时的 context 要求 |
 | `src/ui/` | 场景视口、目录、时间轴、悬浮卡片、详情、窄窗口布局 |
 | `native/astronomy/` | CSPICE 错误处理、状态／姿态、参考轨道和时间转换 |
 | `native/macos/` | Objective-C / C、资源定位、Metal 管线与场景编码 |
 | `native/linux/` | C、资源定位、GdkPixbuf 纹理解码、GLES 3 程序与场景编码 |
-| `native/shaders/solar.metal`、`solar.glsl` | 表面、环、轨道、星空、小行星带与太阳辉光；GLSL ES 3.00 为 Metal 版本的逐项翻译 |
+| `native/windows/` | C++、资源定位、WIC 纹理解码与 CPU mip、D3D12 根签名／管线、帧上传环与场景编码 |
+| `native/shaders/solar.metal`、`solar.glsl`、`solar.hlsl` | 表面、环、轨道、星空、小行星带与太阳辉光；GLSL ES 3.00 与 HLSL 5.1 为 Metal 版本的逐项翻译 |
 | `scripts/` | 显式准备内核、地图与原许可；嵌入 shader；参考数据比对 |
 | `tests/` | Scoop 行为与数值测试 |
-| `tests-native/` | 星历连续覆盖、独立参考样本与真实 Metal／GLES 测试 |
-| `packaging/macos.toml`、`packaging/linux.toml` | 离线 `.app` 与 deb 配置 |
+| `tests-native/` | 星历连续覆盖、独立参考样本与真实 Metal／GLES／D3D12 测试；GLES 与 D3D12 共用 `target_shadows.c` |
+| `packaging/macos.toml`、`packaging/linux.toml`、`packaging/windows.toml` | 离线 `.app`、deb 与 NSIS 配置 |
 
-没有修改同级 Scoop 编译器、runtime 或 UI 库。共享逻辑与渲染器之间使用实际调用的 `solar_renderer_*` C 接口，不引入通用游戏引擎、后端注册框架或空的其他平台实现。Metal 与 GLES 后端各自持有天体／轨道的同形状态记录，没有为两份短小的状态函数另建共享 C 层。
+没有修改同级 Scoop 编译器、runtime 或 UI 库。共享逻辑与渲染器之间使用实际调用的 `solar_renderer_*` C 接口，不引入通用游戏引擎、后端注册框架或空的其他平台实现。Metal、GLES 与 D3D12 后端各自持有天体／轨道的同形状态记录，没有为两份短小的状态函数另建共享 C 层。
 
 ## 2. 已实现的用户功能
 
@@ -107,7 +108,7 @@
 | --- | --- |
 | 资料、时间、相机、场景、拾取、UI | 复用 Scoop 代码，验证目标平台窗口和输入 |
 | CSPICE | 使用对应官方 C 工具包，复用同一套 SPK/PCK/LSK |
-| 渲染 | 实现 `solar_renderer.h`；Linux 已使用 GLES 3，Windows 可用 D3D12 |
+| 渲染 | 实现 `solar_renderer.h`；Linux 已使用 GLES 3，Windows 已使用 D3D12 |
 | GPU 资源 | 增加 `platform/<os>/backend.scoop`，提供目标格式、设备／纹理借用和关闭方式 |
 | 资源定位和打包 | 增加对应 `resources` 原生文件与实际平台 bundle 配置 |
 
@@ -146,3 +147,32 @@ GLES 原生测试使用 EGL surfaceless context 与自建 RGBA8 纹理，按 Ski
 - 未验证 X11 会话、NVIDIA／AMD 驱动、Linux aarch64、rpm／AppImage，以及触控板手势。
 - 本次同时调整了 macOS 使用的共享 Scoop 代码：Metal 句柄借用从 `renderer.scoop` 移到 `platform/darwin/backend.scoop`，纹理加载改在 `GpuDevice.withNative` 借用内执行。Metal 原生代码、着色器和 `shaders.m` 未改动，但本机工具链没有 `aarch64-apple-darwin` sysroot，这部分改动尚未在 macOS 上编译或运行，第 3—5 节的 macOS 结果仍对应此前的提交。
 
+## 9. Windows 验证（2026-11-25）
+
+环境：Windows 11 Pro 10.0.26300，x86_64，NVIDIA GeForce RTX 4090；Visual Studio 18 Build Tools（MSVC 14.51.36231）与 Windows SDK 10.0.26100.0。Scoop `0.0.0-dev.20261124`，revision `f1bc9aa040bd7e69314592ca334313aa2c0f4298`（驱动 `sco.exe`，目标 `x86_64-pc-windows-msvc-ucrt`）。星历子集与 37 张地图由同一准备脚本在本机重新生成，资源总计约 611 MiB。格式化／lint：Scoop fmt、clang-format 23.1.5（对已有文件无改动）、Ruff 0.16.10 通过；应用原生代码以 `-Wmost -Wextra -Werror` 编译。
+
+| 验证 | 结果 |
+| --- | --- |
+| `make test` | 3 个测试容器、10 项测试全部通过 |
+| SPK 连续覆盖与逐年样本 | 40 个目标无缺口；6,231 个状态与姿态样本通过 |
+| JPL Horizons 比对 | 两组样本的位置／速度差与第 3 节 macOS 记录逐位一致 |
+| 真实 D3D12（`make test-native`） | 五条管线、37 张地图、31 个独立天体帧通过；灰度卫星 RGB 一致；地球昼面中心亮度 95.8、夜面 2.4；相同输入帧逐字节一致 |
+| 物理阴影 | 2027-01-07 假日食整幅一致；2027-02-06 环食（最暗比 0.315）、2027-08-02 全食（0.016）、2026-03-03 月食、木卫一影与木卫一受食均检出；隐藏遮挡物、展示比例独立性与土星环断言通过 |
+| NSIS 打包 | `make bundle` 生成 `solar-system-0.1.0-x86_64.exe`（约 507 MiB）；静默安装到临时目录：程序、`MSVCP140`／`VCRUNTIME140`／`VCRUNTIME140_1` 与 `resources/solar/` 布局正确；从 `C:\Windows\Temp` 启动，VC 运行库从安装目录加载、资源从安装目录读取；静默卸载后安装目录、卸载登记与开始菜单项均移除 |
+
+实现中的平台问题与处理：
+
+- NAIF 官方 `PC_Windows_VisualC_64bit` 的 `cspice.lib` 全部 2,229 个目标文件要求静态 CRT `LIBCMT`，与 Scoop MSVC 目标的动态 UCRT 冲突（链接报 LNK4098）。准备脚本改用同一 N0067 包内源码、`mkprodct.bat` 的同组宏，以工具链 `clang-cl /MD` 重新编译 `cspice.lib`；f2c 生成代码依赖隐式 `int`，仅为这批源码关闭 `-Wimplicit-int` 错误。`spkmerge.exe` 等工具使用官方预编译版。
+- clang-cl 把 `-Wall` 解释为 `-Weverything`，而 `c_flags` 不能按目标区分，因此 Cone 的 C／C++ 标志改为 Scoop graphics Cone 同样使用的 `-Wmost -Wextra -Werror`；macOS／Linux 的 `make test-native` 仍以 `-Wall -Wextra -Werror` 编译同一批源码。
+- `windows.h` 把 `near`／`far` 定义为宏，HLSL 中 `point`、`linear` 为关键字，对应标识符已改名。D3D12 没有点精灵，粒子与辉光改为顶点着色器展开的四边形。
+- WIC JPEG 解码是加载地图的主要耗时：本机 37 张 4096×2048 级地图共约 10 秒（单张 0.05—0.6 秒），CPU mip 生成每张约 15—50 毫秒。应用只在天体首次可见时加载其地图，没有并行解码。
+
+实际窗口：开发构建与安装版均在本机桌面启动（逻辑 2000×1292、物理 2586×1671 像素的窗口），通过 SendInput 自动操作并截图核对：全景场景、太阳辉光、轨道与标签；拖动旋转为侧视；悬浮在太阳上出现基本资料卡；目录聚焦土星后展开卫星列表；播放推进时间、再次点击暂停；土星近观可见环、卡西尼缝、卫星与环影；详情弹层显示实时渲染的土星图像与资料，关闭按钮正常。暂停的静止场景 10 秒内进程 CPU 时间增量 0.06 秒，工作集约 265 MiB；关闭窗口后进程以 0 退出且无错误输出。
+
+限制与观察：
+
+- 只验证了 NVIDIA RTX 4090 一种 D3D12 设备；AMD、Intel、WARP 软件设备，以及 Windows 10、ARM64、高对比度主题未验证。原生测试使用 DXGI 默认适配器，应用使用 Scoop 选定的设备。
+- 滚轮缩放、方向键平移、双击聚焦、日期输入与 Escape 未在本次 Windows 自动化中单独确认；触控板与触摸输入未验证。
+- 安装器只验证了按用户安装、静默安装与卸载；未签名，未测试升级、按机器安装和 MSI。MSVC C++ 运行库按 `vc-runtime = "app-local"` 随程序部署，取自构建机 Build Tools 的 Redist 目录。
+- 资源路径含非 ASCII 字符时改用系统 8.3 短路径供 CSPICE 读取；该分支未在实际非 ASCII 安装目录验证，卷若禁用 8.3 名称则 CSPICE 可能无法打开内核。
+- 本次的共享改动：`solar_renderer.h`／`solar_ephemeris.h` 增加 C++ 链接保护与 D3D12 渲染入口；GLES 测试的目标函数改名为通用 `render_target.h`／`target_shadows.c`；Cone 的 native 告警标志如上调整。这些改动未在 macOS 与 Linux 上重新编译或运行，第 3—8 节的结果仍对应此前的提交。

@@ -1,4 +1,4 @@
-#include "gles_target.h"
+#include "render_target.h"
 #include "solar_ephemeris.h"
 #include <assert.h>
 #include <math.h>
@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-// GLES counterpart of shadows.m; the assertions are kept identical.
-enum { IMAGE_SIZE = GLES_TARGET_SIZE };
+// GLES and D3D12 counterpart of shadows.m; the assertions are kept identical.
+enum { IMAGE_SIZE = TARGET_SIZE };
 typedef struct {
   unsigned char bytes[IMAGE_SIZE * IMAGE_SIZE * 4];
 } Image;
@@ -71,10 +71,10 @@ static Image *capture(void *renderer, SolarCamera camera, SolarBody receiver,
   solar_renderer_body(renderer, receiver, 1);
   if (occluder)
     solar_renderer_body(renderer, *occluder, 0);
-  gles_target_render(renderer, camera);
+  target_render(renderer, camera);
   Image *image = malloc(sizeof(Image));
   assert(image);
-  gles_target_read(image->bytes);
+  target_read(image->bytes);
   return image;
 }
 

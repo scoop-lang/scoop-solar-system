@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
   double x, y, z;
 } SolarVector;
@@ -21,7 +25,8 @@ typedef struct {
 } SolarBody;
 
 // Metal passes its device and command queue; GLES passes the EGL display and
-// the context that is current during every later call.
+// the context that is current during every later call; D3D12 passes its device
+// and direct command queue, which the renderer retains.
 void *solar_renderer_create(void *device, void *queue);
 int32_t solar_renderer_load(void *renderer, int32_t body, const char *filename);
 void solar_renderer_begin(void *renderer);
@@ -40,8 +45,17 @@ int32_t solar_renderer_render_texture(void *renderer, uint32_t texture,
                                       int32_t width, int32_t height,
                                       SolarCamera camera, double et,
                                       int32_t orbits, int32_t belt);
+// D3D12 renders into a borrowed ID3D12Resource on the retained queue and
+// returns it to the given resource state before returning.
+int32_t solar_renderer_render_resource(void *renderer, void *resource,
+                                       uint32_t state, SolarCamera camera,
+                                       double et, int32_t orbits, int32_t belt);
 // GLES requires the creating context to be current.
 void solar_renderer_close(void *renderer);
 const char *solar_renderer_error(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

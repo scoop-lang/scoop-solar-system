@@ -3,6 +3,10 @@
 
 #include "solar_renderer.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
   SolarVector position, velocity, axis_x, axis_y, axis_z;
   int32_t valid;
@@ -29,5 +33,9 @@ SolarState solar_spice_state(int32_t body, double et);
 SolarOrbit solar_spice_orbit(int32_t body, int32_t center, double et);
 SolarVector solar_spice_conic(SolarOrbit orbit, double fraction);
 const char *solar_resource_root(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

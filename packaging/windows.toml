@@ -1,0 +1,26 @@
+[bundle]
+schema = 1
+identifier = "dev.scoop.solar-system"
+name = "solar-system"
+version = "0.1.0"
+display-name = "Scoop Solar System"
+description = "A time-driven solar system explorer built with Scoop"
+publisher = "Scoop Solar System"
+# make bundle copies the MSVC C++ runtime DLLs of the linking toolset here.
+library-search-paths = ["../target/vc-runtime"]
+
+[[bundle.files]]
+from = "../assets/prepared"
+to = "solar"
+kind = "resource"
+
+[bundle.windows]
+formats = ["nsis"]
+install-mode = "per-user"
+# MSVCP140 / VCRUNTIME140(_1) are installed next to the program; UCRT,
+# D3D12, DXGI, WIC and d3dcompiler_47 are Windows system components.
+vc-runtime = "app-local"
+
+[bundle.windows.nsis]
+start-menu-shortcut = true
+desktop-shortcut = false

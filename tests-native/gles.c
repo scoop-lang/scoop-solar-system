@@ -1,21 +1,18 @@
-#include "gles_target.h"
-#include "solar_renderer.h"
+#include "render_target.h"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <GLES3/gl3.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void check_shadows(void *renderer, const char *resource_root);
-
 static GLuint target_texture, target_framebuffer;
 
-void gles_target_create(void) {
+static void target_create(void) {
   glGenTextures(1, &target_texture);
   glBindTexture(GL_TEXTURE_2D, target_texture);
-  glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, GLES_TARGET_SIZE,
-                 GLES_TARGET_SIZE);
+  glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, TARGET_SIZE, TARGET_SIZE);
   glGenFramebuffers(1, &target_framebuffer);
   glBindFramebuffer(GL_FRAMEBUFFER, target_framebuffer);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
@@ -25,34 +22,31 @@ void gles_target_create(void) {
   assert(glGetError() == GL_NO_ERROR);
 }
 
-void gles_target_render(void *renderer, SolarCamera camera) {
-  if (!solar_renderer_render_texture(renderer, target_texture, GLES_TARGET_SIZE,
-                                     GLES_TARGET_SIZE, camera, 0, 0, 0)) {
+void target_render(void *renderer, SolarCamera camera) {
+  if (!solar_renderer_render_texture(renderer, target_texture, TARGET_SIZE,
+                                     TARGET_SIZE, camera, 0, 0, 0)) {
     fprintf(stderr, "%s\n", solar_renderer_error());
     abort();
   }
 }
 
-// Rows are returned top-first, matching the Skia texture origin.
-void gles_target_read(unsigned char *pixels) {
-  unsigned char rows[GLES_TARGET_SIZE * GLES_TARGET_SIZE * 4];
+void target_read(unsigned char *pixels) {
+  unsigned char rows[TARGET_SIZE * TARGET_SIZE * 4];
   glBindFramebuffer(GL_FRAMEBUFFER, target_framebuffer);
   glPixelStorei(GL_PACK_ALIGNMENT, 1);
-  glReadPixels(0, 0, GLES_TARGET_SIZE, GLES_TARGET_SIZE, GL_RGBA,
-               GL_UNSIGNED_BYTE, rows);
+  glReadPixels(0, 0, TARGET_SIZE, TARGET_SIZE, GL_RGBA, GL_UNSIGNED_BYTE, rows);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   assert(glGetError() == GL_NO_ERROR);
-  for (int y = 0; y < GLES_TARGET_SIZE; y++)
-    memcpy(pixels + y * GLES_TARGET_SIZE * 4,
-           rows + (GLES_TARGET_SIZE - 1 - y) * GLES_TARGET_SIZE * 4,
-           GLES_TARGET_SIZE * 4);
+  for (int y = 0; y < TARGET_SIZE; y++)
+    memcpy(pixels + y * TARGET_SIZE * 4,
+           rows + (TARGET_SIZE - 1 - y) * TARGET_SIZE * 4, TARGET_SIZE * 4);
 }
 
 static double center_brightness(const unsigned char *pixels) {
   double sum = 0;
   for (int y = 96; y < 160; y++)
     for (int x = 96; x < 160; x++) {
-      const unsigned char *p = pixels + (y * GLES_TARGET_SIZE + x) * 4;
+      const unsigned char *p = pixels + (y * TARGET_SIZE + x) * 4;
       sum += p[0] + p[1] + p[2];
     }
   return sum / (64 * 64 * 3);
@@ -123,9 +117,9 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-  gles_target_create();
-  static unsigned char pixels[GLES_TARGET_SIZE * GLES_TARGET_SIZE * 4],
-      repeated[GLES_TARGET_SIZE * GLES_TARGET_SIZE * 4];
+  target_create();
+  static unsigned char pixels[TARGET_SIZE * TARGET_SIZE * 4],
+      repeated[TARGET_SIZE * TARGET_SIZE * 4];
   unsigned rendered = 0;
   for (int i = 0; i < count; i++) {
     int id = maps[i].id;
@@ -154,8 +148,8 @@ int main(int argc, char **argv) {
     if (id != 10)
       solar_renderer_body(r, sun, 0);
     solar_renderer_body(r, body, 1);
-    gles_target_render(r, camera);
-    gles_target_read(pixels);
+    target_render(r, camera);
+    target_read(pixels);
     double brightness = center_brightness(pixels);
     if (brightness <= 8) {
       fprintf(stderr, "Body %d rendered unexpectedly dark: %.1f\n", id,
@@ -163,18 +157,18 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (id == 401 || id == 402 || (id >= 701 && id <= 705)) {
-      const unsigned char *center = pixels + (128 * GLES_TARGET_SIZE + 128) * 4;
+      const unsigned char *center = pixels + (128 * TARGET_SIZE + 128) * 4;
       assert(abs((int)center[0] - center[1]) <= 2);
       assert(abs((int)center[1] - center[2]) <= 2);
     }
     if (id == 399) {
       double day = brightness;
-      gles_target_render(r, camera);
-      gles_target_read(repeated);
+      target_render(r, camera);
+      target_read(repeated);
       assert(memcmp(pixels, repeated, sizeof(pixels)) == 0);
       camera.eye.x = 5.5;
-      gles_target_render(r, camera);
-      gles_target_read(repeated);
+      target_render(r, camera);
+      target_read(repeated);
       double night = center_brightness(repeated);
       assert(day > night * 1.5);
       printf("Earth daylight %.1f, night side %.1f; identical frames match "
