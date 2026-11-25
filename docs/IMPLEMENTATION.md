@@ -1,6 +1,6 @@
 # 实施与验收
 
-日期：2026-11-24。macOS Apple Silicon 首版已完成应用实现、星历和纹理准备、原生构建与 `.app` 打包。以下记录实际实现和验证，不将其他平台接口的存在视为已经支持其他系统。
+日期：2026-11-24。macOS Apple Silicon 首版已完成应用实现、星历和纹理准备、原生构建与 `.app` 打包。2026-11-25 增加 Linux x86_64 GNU（GTK 4 / Wayland、GLES 3）后端、资源定位与 deb 打包，验证记录见第 8 节。以下记录实际实现和验证，不将其他平台接口的存在视为已经支持其他系统。
 
 ## 1. 实际目录与职责
 
@@ -10,16 +10,18 @@
 | `src/astronomy/` | 31 个天体的资料、类型化身份、CSPICE 适配、模拟时钟 |
 | `src/scene/` | Double 向量、相机、物理／展示变换、帧快照、投影与拾取 |
 | `src/render/` | GPU 设备、输出缓存、资源所有权与 C ABI 后端调用 |
+| `platform/darwin/`、`platform/linux/` | 各平台唯一的原生 GPU 句柄借用：目标格式、Metal／EGL 设备与纹理、关闭时的 context 要求 |
 | `src/ui/` | 场景视口、目录、时间轴、悬浮卡片、详情、窄窗口布局 |
 | `native/astronomy/` | CSPICE 错误处理、状态／姿态、参考轨道和时间转换 |
 | `native/macos/` | Objective-C / C、资源定位、Metal 管线与场景编码 |
-| `native/shaders/solar.metal` | 表面、环、轨道、星空、小行星带与太阳辉光 |
+| `native/linux/` | C、资源定位、GdkPixbuf 纹理解码、GLES 3 程序与场景编码 |
+| `native/shaders/solar.metal`、`solar.glsl` | 表面、环、轨道、星空、小行星带与太阳辉光；GLSL ES 3.00 为 Metal 版本的逐项翻译 |
 | `scripts/` | 显式准备内核、地图与原许可；嵌入 shader；参考数据比对 |
 | `tests/` | Scoop 行为与数值测试 |
-| `tests-native/` | 星历连续覆盖、独立参考样本与真实 Metal 测试 |
-| `packaging/macos.toml` | 离线 `.app` 配置 |
+| `tests-native/` | 星历连续覆盖、独立参考样本与真实 Metal／GLES 测试 |
+| `packaging/macos.toml`、`packaging/linux.toml` | 离线 `.app` 与 deb 配置 |
 
-没有修改同级 Scoop 编译器、runtime 或 UI 库。共享逻辑与渲染器之间使用实际调用的 `solar_renderer_*` C 接口，不引入通用游戏引擎、后端注册框架或空的其他平台实现。
+没有修改同级 Scoop 编译器、runtime 或 UI 库。共享逻辑与渲染器之间使用实际调用的 `solar_renderer_*` C 接口，不引入通用游戏引擎、后端注册框架或空的其他平台实现。Metal 与 GLES 后端各自持有天体／轨道的同形状态记录，没有为两份短小的状态函数另建共享 C 层。
 
 ## 2. 已实现的用户功能
 
@@ -105,14 +107,42 @@
 | --- | --- |
 | 资料、时间、相机、场景、拾取、UI | 复用 Scoop 代码，验证目标平台窗口和输入 |
 | CSPICE | 使用对应官方 C 工具包，复用同一套 SPK/PCK/LSK |
-| 渲染 | 实现 `solar_renderer.h`，Windows 可用 D3D12，Linux 可用现有 GLES 3 接口 |
-| GPU 资源 | 替换 `renderer.scoop` 中集中的原生设备／纹理借用分支和目标格式 |
-| 资源定位和打包 | 替换 macOS `resources.m`，增加实际平台 bundle 配置 |
+| 渲染 | 实现 `solar_renderer.h`；Linux 已使用 GLES 3，Windows 可用 D3D12 |
+| GPU 资源 | 增加 `platform/<os>/backend.scoop`，提供目标格式、设备／纹理借用和关闭方式 |
+| 资源定位和打包 | 增加对应 `resources` 原生文件与实际平台 bundle 配置 |
 
-首期没有为未实现平台增加占位类。纹理、物理数据、C 数据记录及材质计算边界可复用；其他后端仍需真实实现与图像对照验证。
+没有为未实现平台增加占位类。纹理、物理数据、C 数据记录及材质计算边界可复用；其他后端仍需真实实现与图像对照验证。
 
 ## 7. 展示精度的限制
 
 天体大小、卫星间距、亮度均服务展示；光照和阴影始终使用真实几何，不随展示比例变化。阴影采用平均半径、非球形天体的包围球与视圆盘重叠近似，多个遮挡物的透光比例相乘，环影仍按太阳中心方向采样；不包含大气折射造成的月全食红色，也不提供精确接触时刻或地面路径预报。
 
 地图是代表外观，部分未知地表沿用上游标明的低细节补全，云层不随历史天气变化。参考轨道使用当前两体轨道要素，实际位置使用 SPK。未来 UTC 按随包 `naif0012.tls` 转换，不预测未来新增闰秒。
+
+## 8. Linux 验证（2026-11-25）
+
+环境：Ubuntu 26.04.1 LTS，x86_64，GNOME Wayland 会话 `WAYLAND_DISPLAY=wayland-0`；Intel Arc A770M（DG2）与 Iris Xe，Mesa GLES 3。Scoop `0.0.0-dev.20261124`，revision `f1bc9aa040bd7e69314592ca334313aa2c0f4298`，配套 GNU sysroot。CSPICE 使用官方 N0067 `PC_Linux_GCC_64bit` 包；星历子集与 37 张地图由同一准备脚本在本机重新生成。格式化／lint：Scoop fmt、clang-format、Ruff 0.16.10 通过，原生代码以 `-Wall -Wextra -Werror` 编译。
+
+| 验证 | 结果 |
+| --- | --- |
+| `make test` | 3 个测试容器、10 项测试全部通过 |
+| SPK 连续覆盖与逐年样本 | 40 个目标无缺口；6,231 个状态与姿态样本通过 |
+| JPL Horizons 比对 | 两组样本的位置／速度差与第 3 节 macOS 记录逐位一致 |
+| 真实 GLES（`make test-native`） | 五个程序、37 张地图、31 个独立天体帧通过；灰度卫星 RGB 一致；地球昼面中心亮度 94.6、夜面 2.3；相同输入帧逐字节一致 |
+| 物理阴影 | 2027-01-07 假日食整幅一致；2027-02-06 环食（最暗比 0.318）、2027-08-02 全食（0.016）、2026-03-03 月食、木卫一影与木卫一受食均检出；月球展示放大 100 倍逐字节一致，地球／土星共同放大 4 倍差异小于 0.2 |
+| 深度路径 | 本机提供 `GL_EXT_clip_control`；另以 `MESA_EXTENSION_OVERRIDE=-GL_EXT_clip_control` 强制投影重映射路径，上述全部断言同样通过 |
+| deb 打包 | `make bundle` 生成 `solar-system_0.1.0-1_amd64.deb`（约 562 MiB）；解包到临时目录、从 `/` 启动，7 个 SPK 均从 `usr/share/dev.scoop.solar-system/solar/kernels/` 以 `O_RDONLY` 打开 |
+
+GLES 原生测试使用 EGL surfaceless context 与自建 RGBA8 纹理，按 Skia 左上原点读回，断言与 Metal 测试相同。Linux 的 `make test-native` 依赖系统 `clang`、`pkg-config` 以及 GdkPixbuf／EGL／GLESv2 开发文件。
+
+实际窗口：release 程序和解包后的 deb 程序均在 `wayland-0` 上启动并持续运行，未报告初始化、星历、纹理或 GPU 错误；Wayland 协议日志确认窗口收到 activated configure，并以 200% 缩放持续提交 2426 × 1284 像素的缓冲。用户在该显示上实际操作 release 程序：拖动旋转、滚轮缩放、目录中聚焦土星与地球、悬浮卡片及详情、时间轴播放，均确认正常。
+
+限制与观察：
+
+- GNOME Shell 拒绝无交互截图，本记录没有截图；窗口画面以用户的人工核对为准，没有逐项像素对照 macOS 画面。
+- deb 未安装到系统；`Depends` 按本机实际 SONAME 对应的 Ubuntu 包填写（GTK 4、libadwaita、GdkPixbuf、EGL、GLESv2、fontconfig、freetype）。配套工具链链接的程序直接 `NEEDED` 约 140 个库（含 GStreamer、cups、curl 等 GTK sysroot 的传递依赖），在只装最小 GTK 运行时的系统上可能需要更多包；这属于 Scoop 链接输出，未在应用中修改。
+- Linux 原生 include 使用 Debian／Ubuntu 的 GdkPixbuf／GLib 头文件路径（`/usr/include/gdk-pixbuf-2.0` 等）；其他发行版需按实际路径调整。
+- 在 `wayland-0` 内嵌套 weston 14 测试时，kiosk-shell 下本应用的 GTK 客户端在首帧提交后被 weston 以 `error in client communication` 断开，而同一 weston 中 Scoop 自带的 `ui-shadcn`、`gtk-gpu` 示例正常；desktop-shell 下应用正常运行但 `weston-screenshooter` 不返回。尚未定位到 Scoop 或应用的具体问题，GNOME 会话不受影响。
+- 未验证 X11 会话、NVIDIA／AMD 驱动、Linux aarch64、rpm／AppImage，以及触控板手势。
+- 本次同时调整了 macOS 使用的共享 Scoop 代码：Metal 句柄借用从 `renderer.scoop` 移到 `platform/darwin/backend.scoop`，纹理加载改在 `GpuDevice.withNative` 借用内执行。Metal 原生代码、着色器和 `shaders.m` 未改动，但本机工具链没有 `aarch64-apple-darwin` sysroot，这部分改动尚未在 macOS 上编译或运行，第 3—5 节的 macOS 结果仍对应此前的提交。
+

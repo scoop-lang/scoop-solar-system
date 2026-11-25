@@ -1,0 +1,33 @@
+[bundle]
+schema = 1
+identifier = "dev.scoop.solar-system"
+name = "solar-system"
+version = "0.1.0"
+display-name = "Scoop Solar System"
+description = "A time-driven solar system explorer built with Scoop"
+publisher = "Scoop Solar System"
+
+[[bundle.files]]
+from = "../assets/prepared"
+to = "solar"
+kind = "resource"
+
+[bundle.linux]
+formats = ["deb"]
+categories = ["Education", "Science"]
+terminal = false
+
+# Package names verified on Ubuntu 26.04 for the binary's actual SONAMEs.
+[bundle.linux.deb]
+maintainer = "Scoop Solar System <solar-system@scoop.dev>"
+section = "science"
+revision = "1"
+depends = [
+    "libgtk-4-1 (>= 4.18)",
+    "libadwaita-1-0 (>= 1.4)",
+    "libgdk-pixbuf-2.0-0",
+    "libegl1",
+    "libgles2",
+    "libfontconfig1",
+    "libfreetype6",
+]

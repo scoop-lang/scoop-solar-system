@@ -9,7 +9,15 @@ description = "A time-driven solar system explorer built with Scoop"
 
 [[sources]]
 path = "src"
+when = { os = ["darwin", "linux"] }
+
+[[sources]]
+path = "platform/darwin"
 when = { os = "darwin" }
+
+[[sources]]
+path = "platform/linux"
+when = { os = "linux", env = "gnu" }
 
 [dependencies]
 "scoop:scoop.core" = "0.1.0"
@@ -32,7 +40,7 @@ path = "tests"
 "scoop:scoop.test" = "0.1.0"
 
 [native]
-include = ["native/include", "vendor/cspice/include"]
+include = ["native/include", "vendor/cspice/include", { path = "/usr/include/gdk-pixbuf-2.0", when = { os = "linux", env = "gnu" } }, { path = "/usr/include/glib-2.0", when = { os = "linux", env = "gnu" } }, { path = "/usr/lib/x86_64-linux-gnu/glib-2.0/include", when = { os = "linux", env = "gnu" } }]
 c_flags = ["-Wall", "-Wextra", "-Werror"]
 objc_flags = ["-Wall", "-Wextra", "-Werror"]
 
@@ -73,6 +81,52 @@ when = { os = "darwin" }
 name = "MetalKit"
 kind = "framework"
 when = { os = "darwin" }
+
+[[native.sources]]
+path = "native/linux/resources.c"
+when = { os = "linux", env = "gnu" }
+
+[[native.sources]]
+path = "native/linux/renderer.c"
+when = { os = "linux", env = "gnu" }
+
+[[native.sources]]
+path = "native/linux/shaders.c"
+when = { os = "linux", env = "gnu" }
+
+[[native.sources]]
+path = "native/linux/scene.c"
+when = { os = "linux", env = "gnu" }
+
+[[native.libraries]]
+name = "EGL"
+kind = "dynamic"
+when = { os = "linux", env = "gnu" }
+
+[[native.libraries]]
+name = "GLESv2"
+kind = "dynamic"
+when = { os = "linux", env = "gnu" }
+
+[[native.libraries]]
+name = "gdk_pixbuf-2.0"
+kind = "dynamic"
+when = { os = "linux", env = "gnu" }
+
+[[native.libraries]]
+name = "gobject-2.0"
+kind = "dynamic"
+when = { os = "linux", env = "gnu" }
+
+[[native.libraries]]
+name = "glib-2.0"
+kind = "dynamic"
+when = { os = "linux", env = "gnu" }
+
+[[native.libraries]]
+name = "m"
+kind = "dynamic"
+when = { os = "linux", env = "gnu" }
 
 [bundle]
 config = "packaging/macos.toml"

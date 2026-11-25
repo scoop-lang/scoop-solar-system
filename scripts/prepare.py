@@ -2,6 +2,7 @@
 """Prepare the official CSPICE toolkit and a bounded offline ephemeris package."""
 
 import argparse
+import platform
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +13,11 @@ DOWNLOADS = ROOT / "vendor" / "downloads"
 TOOLKIT = ROOT / "vendor" / "cspice"
 KERNELS = ROOT / "assets" / "prepared" / "kernels"
 NAIF = "https://naif.jpl.nasa.gov/pub/naif/"
+# Official N0067 packages for the platforms with an implemented renderer.
+TOOLKITS = {
+    ("Darwin", "arm64"): ("MacM1_OSX_clang_64bit", "macos-arm64"),
+    ("Linux", "x86_64"): ("PC_Linux_GCC_64bit", "linux-x86_64"),
+}
 SOURCES = [
     ("de442s.bsp", "planets/de442s.bsp", "1,2,3,4,5,6,7,8,9,10,199,299,301,399"),
     ("mar099.bsp", "satellites/mar099.bsp", "401,402,499"),
@@ -58,9 +64,13 @@ def download(url: str, destination: Path) -> Path:
 
 def prepare_toolkit() -> None:
     if not (TOOLKIT / "lib" / "cspice.a").exists():
+        key = (platform.system(), platform.machine())
+        if key not in TOOLKITS:
+            raise SystemExit(f"No CSPICE package configured for {key[0]} {key[1]}")
+        remote, label = TOOLKITS[key]
         package = download(
-            NAIF + "toolkit/C/MacM1_OSX_clang_64bit/packages/cspice.tar.Z",
-            DOWNLOADS / "cspice-n0067-macos-arm64.tar.Z",
+            NAIF + f"toolkit/C/{remote}/packages/cspice.tar.Z",
+            DOWNLOADS / f"cspice-n0067-{label}.tar.Z",
         )
         subprocess.run(
             ["tar", "-xf", str(package), "-C", str(ROOT / "vendor")], check=True

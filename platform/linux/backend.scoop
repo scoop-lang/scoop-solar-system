@@ -1,0 +1,65 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.graphics.native.*
+
+// EGL and GLES handles are borrowed only in this file on Linux.
+
+// GL_RGBA8; the shaders encode sRGB themselves, as with the Metal BGRA8 target.
+internal fun targetFormat(): NativeGpuFormat = NativeGpuFormat.GLES(32856u)
+
+internal fun targetLayout(): GpuPixelLayout = GpuPixelLayout.Rgba8
+
+@Unsafe
+internal fun createNative(native: NativeGpuDevice): Ptr<Unit>? = when (native) {
+    case GLES(val display, val context) -> nativeCreate(display, context)
+    else -> throw GraphicsException("incompatible GPU device")
+}
+
+@Unsafe
+internal fun renderNative(
+    renderer: Ptr<Unit>,
+    texture: NativeGpuTexture,
+    target: GpuBuffer,
+    frame: SceneFrame
+): Int = when (texture) {
+    case GLES(val name) ->
+        nativeRender(
+            renderer,
+            name,
+            target.pixelWidth,
+            target.pixelHeight,
+            frame.camera,
+            frame.time,
+            if (frame.showOrbits) 1 else 0,
+            if (frame.showBelt) 1 else 0
+        )
+    else -> throw GraphicsException("incompatible render target")
+}
+
+// GL objects can only be deleted while their context is current.
+internal fun closeNative(device: GpuDevice, renderer: Ptr<Unit>) {
+    @Unsafe {
+        device
+            .withNative { _ ->
+                @Unsafe {
+                    nativeClose(renderer)
+                }
+            }
+    }
+}
+
+@Extern(name = "solar_renderer_create")
+private fun nativeCreate(display: Ptr<Unit>, context: Ptr<Unit>): Ptr<Unit>?
+
+@Extern(name = "solar_renderer_render_texture")
+private fun nativeRender(
+    renderer: Ptr<Unit>,
+    texture: UInt,
+    width: Int,
+    height: Int,
+    camera: CameraPacket,
+    et: Double,
+    orbits: Int,
+    belt: Int
+): Int

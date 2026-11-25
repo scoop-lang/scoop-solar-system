@@ -38,13 +38,7 @@ internal class ViewportResources : Closeable {
         when (buffer) {
             case None ->
                 buffer = Some(
-                    device!!
-                        .createBuffer(
-                            width,
-                            height,
-                            NativeGpuFormat.Metal(80ul),
-                            GpuPixelLayout.Bgra8
-                        )
+                    device!!.createBuffer(width, height, targetFormat(), targetLayout())
                 )
             case Some(_) -> Unit
         }
@@ -54,23 +48,12 @@ internal class ViewportResources : Closeable {
         }
         if (!reuse) {
             upload(frame)
+            val target = buffer!!
             @Unsafe {
-                buffer!!
+                target
                     .withNativeWrite { _, texture ->
                         @Unsafe {
-                            when (texture) {
-                                case Metal(val pointer) ->
-                                    checkRenderer(
-                                        nativeRender(
-                                            renderer!!, pointer, frame.camera, frame.time,
-                                            if (frame.showOrbits) 1 else 0, if (frame.showBelt)
-                                                1
-                                            else
-                                                0
-                                        )
-                                    )
-                                else -> throw GraphicsException("incompatible render target")
-                            }
+                            checkRenderer(renderNative(renderer!!, texture, target, frame))
                         }
                     }
             }
@@ -122,11 +105,17 @@ internal class ViewportResources : Closeable {
     private fun loadTexture(id: Int, name: String) {
         if (loaded.contains(id)) return
         val path = resourceRoot() + "/textures/" + name
+        // Uploads change native GPU state, so they run inside a device borrow.
         @Unsafe {
-            path
-                .withCString { value ->
+            device!!
+                .withNative { _ ->
                     @Unsafe {
-                        checkRenderer(nativeLoad(renderer!!, id, value))
+                        path
+                            .withCString { value ->
+                                @Unsafe {
+                                    checkRenderer(nativeLoad(renderer!!, id, value))
+                                }
+                            }
                     }
                 }
         }
@@ -141,14 +130,8 @@ internal class ViewportResources : Closeable {
                     owned
                         .withNative { native ->
                             @Unsafe {
-                                return@withNative when (native) {
-                                    case Metal(val metal, val queue) ->
-                                        nativeCreate(metal, queue) ?:
-                                            throw GraphicsException(
-                                                String.fromCString(nativeError())
-                                            )
-                                    else -> throw GraphicsException("incompatible GPU device")
-                                }
+                                return@withNative createNative(native) ?:
+                                    throw GraphicsException(String.fromCString(nativeError()))
                             }
                         }
                 )
@@ -163,9 +146,7 @@ internal class ViewportResources : Closeable {
         } catch (error: Throwable) {
             when (renderer) {
                 case Some(val value) -> {
-                    @Unsafe {
-                        nativeClose(value)
-                    };
+                    closeNative(owned, value);
                     renderer = None
                 }
 
@@ -181,9 +162,7 @@ internal class ViewportResources : Closeable {
         when (renderer) {
             case Some(val value) -> {
                 renderer = None;
-                @Unsafe {
-                    nativeClose(value)
-                }
+                closeNative(device!!, value)
             };
 
             case None -> Unit
@@ -222,12 +201,9 @@ private fun sameScene(a: SceneFrame, b: SceneFrame): Boolean {
 }
 
 @Unsafe
-private fun checkRenderer(result: Int) {
+internal fun checkRenderer(result: Int) {
     if (result == 0) throw GraphicsException(String.fromCString(nativeError()))
 }
-
-@Extern(name = "solar_renderer_create")
-private fun nativeCreate(device: Ptr<Unit>, queue: Ptr<Unit>): Ptr<Unit>?
 
 @Extern(name = "solar_renderer_load")
 private fun nativeLoad(renderer: Ptr<Unit>, id: Int, file: Ptr<Int8>): Int
@@ -250,18 +226,8 @@ private fun nativeOrbitPlace(
     selected: Int
 )
 
-@Extern(name = "solar_renderer_render")
-private fun nativeRender(
-    renderer: Ptr<Unit>,
-    texture: Ptr<Unit>,
-    camera: CameraPacket,
-    et: Double,
-    orbits: Int,
-    belt: Int
-): Int
-
 @Extern(name = "solar_renderer_close")
-private fun nativeClose(renderer: Ptr<Unit>)
+internal fun nativeClose(renderer: Ptr<Unit>)
 
 @Extern(name = "solar_renderer_error")
-private fun nativeError(): Ptr<Int8>
+internal fun nativeError(): Ptr<Int8>

@@ -20,6 +20,8 @@ typedef struct {
   double roughness;
 } SolarBody;
 
+// Metal passes its device and command queue; GLES passes the EGL display and
+// the context that is current during every later call.
 void *solar_renderer_create(void *device, void *queue);
 int32_t solar_renderer_load(void *renderer, int32_t body, const char *filename);
 void solar_renderer_begin(void *renderer);
@@ -30,8 +32,15 @@ void solar_renderer_orbit_point(void *renderer, int32_t slot, int32_t index,
 void solar_renderer_orbit_place(void *renderer, int32_t slot,
                                 SolarVector center, double scale,
                                 int32_t selected);
+// Metal renders into a borrowed MTLTexture.
 int32_t solar_renderer_render(void *renderer, void *texture, SolarCamera camera,
                               double et, int32_t orbits, int32_t belt);
+// GLES renders into a borrowed RGBA8 texture name of the current context.
+int32_t solar_renderer_render_texture(void *renderer, uint32_t texture,
+                                      int32_t width, int32_t height,
+                                      SolarCamera camera, double et,
+                                      int32_t orbits, int32_t belt);
+// GLES requires the creating context to be current.
 void solar_renderer_close(void *renderer);
 const char *solar_renderer_error(void);
 
