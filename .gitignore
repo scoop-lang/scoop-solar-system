@@ -8,3 +8,4 @@ vendor/cspice/
 assets/prepared/
 __pycache__/
 .ruff_cache/
+vendor/nsis/

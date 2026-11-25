@@ -4,7 +4,9 @@
 import ctypes
 import json
 import math
+import os
 import platform
+import shlex
 import subprocess
 
 from prepare import ROOT
@@ -28,16 +30,34 @@ def distance(vector: Vector, expected: list[float]) -> float:
 
 
 def main() -> None:
-    if platform.system() == "Linux":
-        output = ROOT / "target/libsolar-reference.so"
-        compiler = ["clang", "-shared", "-fPIC"]
-        libraries = ["-lm"]
+    if platform.system() == "Windows":
+        output = ROOT / "target/solar-reference.dll"
+        # clang-cl of the Scoop toolchain with the MSVC toolset and SDK paths
+        # resolved by the Makefile; -Wall would mean -Weverything here.
+        command = [
+            os.environ["CLANG_CL"],
+            *shlex.split(os.environ["MSVC_FLAGS"], posix=True),
+            "-LD",
+            "native/astronomy/ephemeris.c",
+            "vendor/cspice/lib/cspice.lib",
+            "-Fe" + str(output),
+            "-Fotarget/check/",
+            "-link",
+            *(
+                "-export:solar_spice_" + name
+                for name in ("open", "close", "error", "state")
+            ),
+        ]
     else:
-        output = ROOT / "target/libsolar-reference.dylib"
-        compiler = ["xcrun", "clang", "-dynamiclib"]
-        libraries = []
-    subprocess.run(
-        [
+        if platform.system() == "Linux":
+            output = ROOT / "target/libsolar-reference.so"
+            compiler = ["clang", "-shared", "-fPIC"]
+            libraries = ["-lm"]
+        else:
+            output = ROOT / "target/libsolar-reference.dylib"
+            compiler = ["xcrun", "clang", "-dynamiclib"]
+            libraries = []
+        command = [
             *compiler,
             "-Wall",
             "-Wextra",
@@ -49,10 +69,8 @@ def main() -> None:
             *libraries,
             "-o",
             str(output),
-        ],
-        cwd=ROOT,
-        check=True,
-    )
+        ]
+    subprocess.run(command, cwd=ROOT, check=True)
     adapter = ctypes.CDLL(str(output))
     adapter.solar_spice_open.argtypes = [ctypes.c_char_p]
     adapter.solar_spice_state.argtypes = [ctypes.c_int32, ctypes.c_double]

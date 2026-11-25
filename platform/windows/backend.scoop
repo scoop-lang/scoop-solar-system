@@ -1,0 +1,59 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.graphics.native.*
+
+// D3D12 handles are borrowed only in this file on Windows.
+
+// DXGI_FORMAT_B8G8R8A8_UNORM; the shaders encode sRGB themselves, as on Metal.
+internal fun targetFormat(): NativeGpuFormat = NativeGpuFormat.D3D12(87u)
+
+internal fun targetLayout(): GpuPixelLayout = GpuPixelLayout.Bgra8
+
+// The renderer retains the device and the direct queue shared with Skia.
+@Unsafe
+internal fun createNative(native: NativeGpuDevice): Ptr<Unit>? = when (native) {
+    case D3D12(_, val device, val queue) -> nativeCreate(device, queue)
+    else -> throw GraphicsException("incompatible GPU device")
+}
+
+@Unsafe
+internal fun renderNative(
+    renderer: Ptr<Unit>,
+    texture: NativeGpuTexture,
+    target: GpuBuffer,
+    frame: SceneFrame
+): Int = when (texture) {
+    case D3D12(val resource, val state) ->
+        nativeRender(
+            renderer,
+            resource,
+            state,
+            frame.camera,
+            frame.time,
+            if (frame.showOrbits) 1 else 0,
+            if (frame.showBelt) 1 else 0
+        )
+    else -> throw GraphicsException("incompatible render target")
+}
+
+// Closing waits for the renderer's own fence on the retained queue.
+internal fun closeNative(device: GpuDevice, renderer: Ptr<Unit>) {
+    @Unsafe {
+        nativeClose(renderer)
+    }
+}
+
+@Extern(name = "solar_renderer_create")
+private fun nativeCreate(device: Ptr<Unit>, queue: Ptr<Unit>): Ptr<Unit>?
+
+@Extern(name = "solar_renderer_render_resource")
+private fun nativeRender(
+    renderer: Ptr<Unit>,
+    resource: Ptr<Unit>,
+    state: UInt,
+    camera: CameraPacket,
+    et: Double,
+    orbits: Int,
+    belt: Int
+): Int

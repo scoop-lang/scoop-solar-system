@@ -9,7 +9,7 @@ description = "A time-driven solar system explorer built with Scoop"
 
 [[sources]]
 path = "src"
-when = { os = ["darwin", "linux"] }
+when = { os = ["darwin", "linux", "windows"] }
 
 [[sources]]
 path = "platform/darwin"
@@ -18,6 +18,14 @@ when = { os = "darwin" }
 [[sources]]
 path = "platform/linux"
 when = { os = "linux", env = "gnu" }
+
+[[sources]]
+path = "platform/windows"
+when = { os = "windows", env = "msvc-ucrt" }
+
+# A desktop application: no console window on Windows.
+[windows]
+subsystem = "gui"
 
 [dependencies]
 "scoop:scoop.core" = "0.1.0"
@@ -41,7 +49,12 @@ path = "tests"
 
 [native]
 include = ["native/include", "vendor/cspice/include", { path = "/usr/include/gdk-pixbuf-2.0", when = { os = "linux", env = "gnu" } }, { path = "/usr/include/glib-2.0", when = { os = "linux", env = "gnu" } }, { path = "/usr/lib/x86_64-linux-gnu/glib-2.0/include", when = { os = "linux", env = "gnu" } }]
-c_flags = ["-Wall", "-Wextra", "-Werror"]
+# clang-cl maps -Wall to -Weverything, so the MSVC target uses -Wmost as
+# scoop.graphics does; make test-native still compiles with -Wall.
+c_flags = ["-Wmost", "-Wextra", "-Werror"]
+# Only the Windows D3D12 adapter is C++; scoop.graphics already links C++.
+cxx = true
+cxx_flags = ["-Wmost", "-Wextra", "-Werror"]
 objc_flags = ["-Wall", "-Wextra", "-Werror"]
 
 [[native.sources]]
@@ -127,6 +140,42 @@ when = { os = "linux", env = "gnu" }
 name = "m"
 kind = "dynamic"
 when = { os = "linux", env = "gnu" }
+
+[[native.sources]]
+path = "native/windows/resources.cpp"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.sources]]
+path = "native/windows/renderer.cpp"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.sources]]
+path = "native/windows/scene.cpp"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.sources]]
+path = "native/windows/shaders.cpp"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.sources]]
+path = "native/windows/textures.cpp"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.libraries]]
+name = "d3d12"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.libraries]]
+name = "d3dcompiler"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.libraries]]
+name = "windowscodecs"
+when = { os = "windows", env = "msvc-ucrt" }
+
+[[native.libraries]]
+name = "ole32"
+when = { os = "windows", env = "msvc-ucrt" }
 
 [bundle]
 config = "packaging/macos.toml"

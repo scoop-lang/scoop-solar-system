@@ -7,11 +7,11 @@
 通过用户提供的 HTTPS 代理读取了 NAIF 官方工具说明、规则、行星／卫星 SPK 目录与摘要、LSK／PCK 目录，以及 NASA CGI Moon Kit 和媒体使用说明。
 
 - [CSPICE Toolkit](https://naif.jpl.nasa.gov/naif/toolkit.html)：官方当前列出的版本为 N0067，发布于 2022-01-03。接口长期稳定；官方 kernel 目录仍有 2026 年更新。选择它是为了复用成熟星历计算与当前数据，不以 Toolkit 版本日期冒充近期算法变更。
-- [C 平台列表](https://naif.jpl.nasa.gov/naif/toolkit_C.html)：列出 Mac/M1 clang、Mac/Intel Apple C、Linux 和 Windows 64 位环境，符合首期及后续移植需求。准备脚本按主机选择 `MacM1_OSX_clang_64bit` 或 `PC_Linux_GCC_64bit` 的 N0067 包；两者生成的星历子集与参考样本结果一致。
+- [C 平台列表](https://naif.jpl.nasa.gov/naif/toolkit_C.html)：列出 Mac/M1 clang、Mac/Intel Apple C、Linux 和 Windows 64 位环境，符合首期及后续移植需求。准备脚本按主机选择 `MacM1_OSX_clang_64bit`、`PC_Linux_GCC_64bit` 或 `PC_Windows_VisualC_64bit` 的 N0067 包；Windows 包为 zip，提供 MSVC 静态库 `cspice.lib` 与 `spkmerge.exe`，与 Scoop 的 `x86_64-pc-windows-msvc-ucrt` 目标直接链接。各平台生成的星历子集与参考样本结果一致。
 - [行星摘要](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/aa_summaries.txt)、[卫星摘要](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/aa_summaries.txt)：提供实际目标身份、中心和时间覆盖。
 - [GPU 接入](../../scoop/docs/specs/SCOOP-GRAPHICS-GPU-SPEC.md)：现有 Scoop 具备设备访问、原生纹理写入和 GPU Image 合成，无需为本应用先新增一套 GPU 框架。
 
-本机已检查的 Scoop 安装入口为同级 `scoop-install/bin/scoop`，显示版本 `0.0.0-dev.20261123`，revision `3910a8c5ee14722d0f15f46d3619b6a24bd6add4`；对应安装树存在 `GpuDevice` 源码。该工具链已完成本项目的编译、测试、Metal 实际绘制与 `.app` 打包。Linux 使用 `~/.scoop` 安装的 `0.0.0-dev.20261124`，revision `f1bc9aa040bd7e69314592ca334313aa2c0f4298`，完成编译、测试、GLES 实际绘制与 deb 打包。
+本机已检查的 Scoop 安装入口为同级 `scoop-install/bin/scoop`，显示版本 `0.0.0-dev.20261123`，revision `3910a8c5ee14722d0f15f46d3619b6a24bd6add4`；对应安装树存在 `GpuDevice` 源码。该工具链已完成本项目的编译、测试、Metal 实际绘制与 `.app` 打包。Linux 使用 `~/.scoop` 安装的 `0.0.0-dev.20261124`，revision `f1bc9aa040bd7e69314592ca334313aa2c0f4298`，完成编译、测试、GLES 实际绘制与 deb 打包。Windows 使用同一版本的 `~/.scoop` 安装（驱动为 `sco.exe`），完成编译、测试、D3D12 实际绘制与 NSIS 打包。
 
 ## 2. 天体身份
 
@@ -95,7 +95,7 @@
 
 清单记录原始文件路径、随包文件名、渲染身份和单独许可文件入口。地图按原图准备，不进行生成式补全；随包 README 记录具体作者与观测资料。月球图使用上游 LRO／CGI Moon Kit 的处理结果，地球使用上游列明的地表、BMNG 与 Natural Earth 数据，其他地图按单独说明处理。
 
-颜色贴图在线性空间受光。单通道灰度 JPG 扩展为 RGB，避免误着色；地球 LA 云图的透明度在 macOS 位于 GPU RG 纹理的 G 通道，在 Linux 由 GdkPixbuf 展开为 RGBA 后位于 alpha，分别处理。两个平台的真实 GPU 测试均覆盖全部地图、灰度一致性、地球昼夜和同一帧的确定性。
+颜色贴图在线性空间受光。单通道灰度 JPG 扩展为 RGB，避免误着色；地球 LA 云图的透明度在 macOS 位于 GPU RG 纹理的 G 通道，在 Linux 由 GdkPixbuf、在 Windows 由 WIC 展开为 RGBA 后位于 alpha，分别处理。三个平台的真实 GPU 测试均覆盖全部地图、灰度一致性、地球昼夜和同一帧的确定性。
 
 ### 4.2 资源规格
 

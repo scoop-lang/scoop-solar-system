@@ -11,9 +11,11 @@ def embed(source: Path, target: Path, prefix: str, header: str, footer: str) -> 
     if target.exists() and source.stat().st_mtime_ns <= target.stat().st_mtime_ns:
         return
     lines = [
-        prefix + json.dumps(line + "\n") for line in source.read_text().splitlines()
+        prefix + json.dumps(line + "\n")
+        for line in source.read_text(encoding="utf-8").splitlines()
     ]
-    target.write_text(header + "\n         ".join(lines) + footer)
+    # LF on every host: the generated sources are versioned.
+    target.write_text(header + "\n         ".join(lines) + footer, newline="\n")
 
 
 embed(
@@ -28,5 +30,12 @@ embed(
     ROOT / "native/linux/shaders.c",
     "",
     '#include "renderer_internal.h"\nconst char *solar_shader_source(void) {\n  return ',
+    ";\n}\n",
+)
+embed(
+    ROOT / "native/shaders/solar.hlsl",
+    ROOT / "native/windows/shaders.cpp",
+    "",
+    '#include "renderer_internal.h"\nconst char *solar_shader_source() {\n  return ',
     ";\n}\n",
 )

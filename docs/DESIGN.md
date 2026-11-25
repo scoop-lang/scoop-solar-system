@@ -1,6 +1,6 @@
 # 太阳系展示程序设计
 
-日期：2026-11-24；2026-11-25 增补 Linux。状态：macOS Apple Silicon 首版已实现，Linux x86_64（GNU、GTK 4／Wayland、GLES 3）已实现；本文记录产品行为与模块边界，实测范围见 [实施与验收](IMPLEMENTATION.md)。
+日期：2026-11-24；2026-11-25 增补 Linux 与 Windows。状态：macOS Apple Silicon 首版已实现，Linux x86_64（GNU、GTK 4／Wayland、GLES 3）与 Windows x86_64（MSVC UCRT、D3D12）已实现；本文记录产品行为与模块边界，实测范围见 [实施与验收](IMPLEMENTATION.md)。
 
 ## 1. 范围与基本选择
 
@@ -16,8 +16,9 @@
 - 加入光照模型，太阳作为光源。
 - 首期可以只支持 macOS，但须保留实际可移植的模块边界。
 - 2026-11-25 用户要求增加 Linux 支持；验收使用 Wayland 显示 `wayland-0`。
+- 2026-11-25 用户要求增加 Windows 支持。
 
-采用 Scoop 应用与 UI、CSPICE 天文计算、macOS Metal／Linux GLES 3 场景渲染的组合。现有 GPU 纹理接口、窗口、事件、控件和弹层继续复用。新增的渲染器只服务球体／少量不规则天体、星环、轨道及粒子，不扩展为通用游戏引擎。
+采用 Scoop 应用与 UI、CSPICE 天文计算、macOS Metal／Linux GLES 3／Windows D3D12 场景渲染的组合。现有 GPU 纹理接口、窗口、事件、控件和弹层继续复用。新增的渲染器只服务球体／少量不规则天体、星环、轨道及粒子，不扩展为通用游戏引擎。
 
 首期独立天体共 31 个：
 
@@ -203,8 +204,10 @@ flowchart TD
     Frame --> Renderer[ViewportResources]
     Renderer --> Metal[macOS Metal 后端]
     Renderer --> GLES[Linux GLES 3 后端]
+    Renderer --> D3D12[Windows D3D12 后端]
     Metal --> Buffer[GpuBuffer / GPU Image]
     GLES --> Buffer
+    D3D12 --> Buffer
     Buffer --> Canvas[SceneContext.draw / Canvas 合成]
     Frame --> Picking[CPU 射线拾取与投影]
     Picking --> UI
@@ -221,7 +224,7 @@ flowchart TD
 | `pick` | 以已 Accepted 的帧做射线与球体／椭球／星环求交，选择最近可见对象 |
 | `bodyCatalog` | 稳定 BodyId、NAIF 映射、物理量、说明文本、纹理资料和来源 |
 
-macOS 使用 Metal renderer，Linux 使用 Scoop 现有的 GLES 3 路径；两者实现同一份 `solar_renderer.h` 纯 C 数据接口，并通过 Cone 的目标源码选择接入。原生句柄借用只集中在 `platform/<os>/backend.scoop`：它选择目标纹理格式、从 `NativeGpuDevice`／`NativeGpuTexture` 取得 Metal device/queue/MTLTexture 或 EGL display/context/texture name，并负责关闭时的上下文要求；`src/render/renderer.scoop` 只保留与平台无关的缓存、上传和拾取帧同步。UI 与天文逻辑不含 Metal、EGL 或 GL 类型。以后 Windows 可实现 D3D12，不承诺尚未接入的 Vulkan 后端。不建立后端注册系统、可加载插件或通用渲染图。
+macOS 使用 Metal renderer，Linux 使用 Scoop 现有的 GLES 3 路径，Windows 使用 Scoop 现有的 D3D12 路径；三者实现同一份 `solar_renderer.h` 纯 C 数据接口，并通过 Cone 的目标源码选择接入。原生句柄借用只集中在 `platform/<os>/backend.scoop`：它选择目标纹理格式、从 `NativeGpuDevice`／`NativeGpuTexture` 取得 Metal device/queue/MTLTexture、EGL display/context/texture name 或 D3D12 device/direct queue/ID3D12Resource 与当前 resource state，并负责关闭时的上下文要求；`src/render/renderer.scoop` 只保留与平台无关的缓存、上传和拾取帧同步。UI 与天文逻辑不含 Metal、EGL、GL 或 D3D 类型。不承诺尚未接入的 Vulkan 后端。不建立后端注册系统、可加载插件或通用渲染图。
 
 Linux 后端与 Metal 后端保持同一画面合同：
 
@@ -231,11 +234,20 @@ Linux 后端与 Metal 后端保持同一画面合同：
 - 纹理由系统 GdkPixbuf 解码（GTK 4 的既有依赖），颜色图与星环图使用 `GL_SRGB8_ALPHA8`，法线图和云层遮罩使用线性 `GL_RGBA8`，加载时生成 mipmap；灰度图展开为 RGB，地球云层透明度位于 alpha。超过 `GL_MAX_TEXTURE_SIZE` 的地图按比例缩小。
 - 渲染只在 `withNativeWrite` 借出的当前 EGL context 中进行，结束后解除对借入纹理的引用并恢复默认绑定。GL 对象只能在该 context 当前时删除，所以 Linux 的关闭经 `GpuDevice.withNative` 借用后执行。
 
+Windows 后端同样保持该画面合同：
+
+- 着色器 `native/shaders/solar.hlsl` 是同一算法的 HLSL（Shader Model 5.1）翻译，五条管线、uniform 布局（列主序，与 std140 相同，末尾追加目标像素尺寸）、光照、有限日面阴影与环影不变；由同一嵌入脚本生成 `native/windows/shaders.cpp`，创建时用 Windows 自带的 `d3dcompiler_47` 编译，不随包附加编译器。
+- 目标纹理为 `DXGI_FORMAT_B8G8R8A8_UNORM`（Skia 解释为 BGRA8、sRGB），着色器自行 sRGB 编码，与 Metal 一致。D3D12 与 Skia 纹理都以左上为原点、深度 `[0, 1]`，投影与 Metal 相同，沿用反向 Z（清除为 0、`GREATER_EQUAL`）。
+- D3D12 没有点精灵：星空、小行星带和太阳辉光在顶点着色器中把每个点展开为同像素尺寸的屏幕空间四边形，片元仍按原 point coordinate 计算圆形衰减。
+- 渲染器 AddRef 借出的 device 与 direct queue，在 `withNativeWrite` 内把命令提交到同一队列：先把借入纹理从给定 state 转到 RENDER_TARGET，结束（包括失败路径）恢复原 state；每帧 uniform／轨道顶点写入 3 份轮换的上传缓冲，由自己的 fence 保证 GPU 用完前不覆盖。深度纹理按像素尺寸替换，旧纹理由在途帧持有到完成。关闭时只等待自己的 fence，不需要借用。
+- 纹理由系统 WIC 解码为 RGBA8，颜色图与星环图使用 `R8G8B8A8_UNORM_SRGB`，法线图和云层遮罩使用线性 `R8G8B8A8_UNORM`；灰度图展开为 RGB，地球云层透明度位于 alpha。D3D12 没有自动 mipmap，加载时在 CPU 以 2×2 盒式滤波生成完整 mip 链，sRGB 颜色在线性光中平均。上传在 `GpuDevice.withNative` 借用内提交到共享队列并等待一次，随后释放暂存缓冲。超过 16384 的地图按比例缩小。
+- 资源位于程序目录的 `resources/solar`（`scoop bundle` 的 Windows 布局）；CSPICE 以 ANSI `fopen` 打开内核，路径含非 ASCII 字符时改用系统 8.3 短路径，使 Scoop、WIC 与 CSPICE 读取同一位置。
+
 ### 7.2 Scoop 与 native 的职责
 
 - Scoop：应用入口、组件树、状态、模拟时钟、相机数学、展示尺度、拾取、信息内容与资源拥有关系。
 - CSPICE 薄 C 适配：加载已准备内核，转换时间，查询位置／姿态及参考轨道；转换原生错误，不复制天体力学实现。
-- Objective-C / C／Metal：设备与管线、GPU mesh／texture、深度、光照／阴影、星环、粒子及输出合成。
+- Objective-C / C／Metal、C／GLES 3、C++／D3D12：设备与管线、GPU mesh／texture、深度、光照／阴影、星环、粒子及输出合成。C++ 只用于 Windows 适配，对 Scoop 仍暴露同一 C ABI。
 - C ABI 传递明确单位的标量、矩阵和有长度的连续记录；native 不保存移动 GC 对象地址。需要异步 GPU 使用的数据先进入 native 拥有的存储。
 
 只建立当前实际调用所需的接口。共用程序化球面网格、有限的表面材质、环网格与实例化小行星已能覆盖本项目；不预先实现模型编辑器、任意场景导入、物理碰撞或实时 N 体积分。
@@ -260,7 +272,7 @@ Linux 后端与 Metal 后端保持同一画面合同：
 
 以 Apple Silicon 的常用桌面窗口为首个验收目标，正常播放争取 60 FPS；具体机器、窗口像素尺寸、帧时间和内存以实测记录。Retina 尺寸按逻辑大小乘 scale 只处理一次。管线与纹理跨帧复用，球面和星环顶点按相同规则在 shader 中生成；轨道要素每 6 个模拟小时或切换系统时更新，曲线在原生端转为相机相对坐标。卫星纹理在进入所属系统时加载。
 
-首个完整版本交付可双击启动的 macOS `.app`，星历、纹理、说明和许可随包提供，断网可使用全部首期功能，工作目录变化不影响资源访问。Linux 交付 `scoop bundle` 生成的 deb：程序位于 `usr/lib/dev.scoop.solar-system/bin/`，资源位于 `usr/share/dev.scoop.solar-system/solar/`，程序按 `/proc/self/exe` 定位资源，不依赖工作目录。已验证 macOS aarch64 与 Linux x86_64 GNU；Intel macOS、Rosetta、Windows、Linux aarch64 及 X11 会话尚未验证，不把模块可移植性当作这些平台已经可用。
+首个完整版本交付可双击启动的 macOS `.app`，星历、纹理、说明和许可随包提供，断网可使用全部首期功能，工作目录变化不影响资源访问。Linux 交付 `scoop bundle` 生成的 deb：程序位于 `usr/lib/dev.scoop.solar-system/bin/`，资源位于 `usr/share/dev.scoop.solar-system/solar/`，程序按 `/proc/self/exe` 定位资源，不依赖工作目录。Windows 交付 `scoop bundle` 生成的 NSIS 安装器：默认按用户安装，程序与随包的 MSVC C++ 运行库位于安装根，资源位于 `resources/solar/`，程序按自身路径定位资源。已验证 macOS aarch64、Linux x86_64 GNU 与 Windows x86_64 MSVC UCRT；Intel macOS、Rosetta、Linux aarch64、Windows ARM64 及 X11 会话尚未验证，不把模块可移植性当作这些平台已经可用。
 
 实施分为基础闭环、天文与时间、全部天体与展示尺度、外观与阴影、交互及打包五个批次，详见 [实施与验收](IMPLEMENTATION.md)。太阳光照在第一个可见场景即实现，后续只补充材质、遮挡和质量；不会把用户要求的光照留成尾项。
 
