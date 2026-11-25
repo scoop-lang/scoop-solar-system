@@ -1,6 +1,6 @@
 # 太阳系展示程序设计
 
-日期：2026-11-24。状态：macOS Apple Silicon 首版已实现；本文记录产品行为与模块边界，实测范围见 [实施与验收](IMPLEMENTATION.md)。
+日期：2026-11-24；2026-11-25 增补 Linux。状态：macOS Apple Silicon 首版已实现，Linux x86_64（GNU、GTK 4／Wayland、GLES 3）已实现；本文记录产品行为与模块边界，实测范围见 [实施与验收](IMPLEMENTATION.md)。
 
 ## 1. 范围与基本选择
 
@@ -15,8 +15,9 @@
 - 首期加入木星、土星等行星的主要卫星。
 - 加入光照模型，太阳作为光源。
 - 首期可以只支持 macOS，但须保留实际可移植的模块边界。
+- 2026-11-25 用户要求增加 Linux 支持；验收使用 Wayland 显示 `wayland-0`。
 
-采用 Scoop 应用与 UI、CSPICE 天文计算、macOS Metal 场景渲染的组合。现有 GPU 纹理接口、窗口、事件、控件和弹层继续复用。新增的渲染器只服务球体／少量不规则天体、星环、轨道及粒子，不扩展为通用游戏引擎。
+采用 Scoop 应用与 UI、CSPICE 天文计算、macOS Metal／Linux GLES 3 场景渲染的组合。现有 GPU 纹理接口、窗口、事件、控件和弹层继续复用。新增的渲染器只服务球体／少量不规则天体、星环、轨道及粒子，不扩展为通用游戏引擎。
 
 首期独立天体共 31 个：
 
@@ -201,7 +202,9 @@ flowchart TD
     Catalog[天体资料与展示尺度] --> Frame
     Frame --> Renderer[ViewportResources]
     Renderer --> Metal[macOS Metal 后端]
+    Renderer --> GLES[Linux GLES 3 后端]
     Metal --> Buffer[GpuBuffer / GPU Image]
+    GLES --> Buffer
     Buffer --> Canvas[SceneContext.draw / Canvas 合成]
     Frame --> Picking[CPU 射线拾取与投影]
     Picking --> UI
@@ -218,7 +221,15 @@ flowchart TD
 | `pick` | 以已 Accepted 的帧做射线与球体／椭球／星环求交，选择最近可见对象 |
 | `bodyCatalog` | 稳定 BodyId、NAIF 映射、物理量、说明文本、纹理资料和来源 |
 
-首期只实现一个 Metal renderer。后端通过 `solar_renderer.h` 的纯 C 数据接口及 Cone 的目标源码选择接入；Metal 句柄借用仅集中在 `src/render/renderer.scoop`，UI 与天文逻辑不含 Metal 类型。以后 Windows 可实现 D3D12，Linux 可实现 Scoop 已有的 GLES 3 路径，不承诺尚未接入的 Vulkan 后端。首期不建立后端注册系统、可加载插件或通用渲染图。
+macOS 使用 Metal renderer，Linux 使用 Scoop 现有的 GLES 3 路径；两者实现同一份 `solar_renderer.h` 纯 C 数据接口，并通过 Cone 的目标源码选择接入。原生句柄借用只集中在 `platform/<os>/backend.scoop`：它选择目标纹理格式、从 `NativeGpuDevice`／`NativeGpuTexture` 取得 Metal device/queue/MTLTexture 或 EGL display/context/texture name，并负责关闭时的上下文要求；`src/render/renderer.scoop` 只保留与平台无关的缓存、上传和拾取帧同步。UI 与天文逻辑不含 Metal、EGL 或 GL 类型。以后 Windows 可实现 D3D12，不承诺尚未接入的 Vulkan 后端。不建立后端注册系统、可加载插件或通用渲染图。
+
+Linux 后端与 Metal 后端保持同一画面合同：
+
+- 着色器 `native/shaders/solar.glsl` 是 `solar.metal` 的 GLSL ES 3.00 逐项翻译，五个程序（表面、星环、轨道、粒子、太阳辉光）、std140 uniform 布局、光照、有限日面阴影与环影算法不变；由同一嵌入脚本生成 `native/linux/shaders.c`。
+- 目标纹理为 `GL_RGBA8`（Skia 解释为 RGBA8、sRGB），着色器自行 sRGB 编码，与 Metal 的 BGRA8Unorm 一致。Skia 的 GPU buffer 以左上为原点，GL 自下而上光栅化，因此投影翻转裁剪空间 y。
+- 沿用反向 Z（清除为 0、`GEQUAL`）。设备提供 `GL_EXT_clip_control` 时设为 `[0, 1]` 深度并在返回前恢复；否则在投影中把同一深度值映射到 GL 的 `[-1, 1]`。
+- 纹理由系统 GdkPixbuf 解码（GTK 4 的既有依赖），颜色图与星环图使用 `GL_SRGB8_ALPHA8`，法线图和云层遮罩使用线性 `GL_RGBA8`，加载时生成 mipmap；灰度图展开为 RGB，地球云层透明度位于 alpha。超过 `GL_MAX_TEXTURE_SIZE` 的地图按比例缩小。
+- 渲染只在 `withNativeWrite` 借出的当前 EGL context 中进行，结束后解除对借入纹理的引用并恢复默认绑定。GL 对象只能在该 context 当前时删除，所以 Linux 的关闭经 `GpuDevice.withNative` 借用后执行。
 
 ### 7.2 Scoop 与 native 的职责
 
@@ -249,7 +260,7 @@ flowchart TD
 
 以 Apple Silicon 的常用桌面窗口为首个验收目标，正常播放争取 60 FPS；具体机器、窗口像素尺寸、帧时间和内存以实测记录。Retina 尺寸按逻辑大小乘 scale 只处理一次。管线与纹理跨帧复用，球面和星环顶点按相同规则在 shader 中生成；轨道要素每 6 个模拟小时或切换系统时更新，曲线在原生端转为相机相对坐标。卫星纹理在进入所属系统时加载。
 
-首个完整版本交付可双击启动的 macOS `.app`，星历、纹理、说明和许可随包提供，断网可使用全部首期功能，工作目录变化不影响资源访问。优先验证 aarch64；Intel macOS、Rosetta、Windows 和 Linux 尚未验证，不把模块可移植性当作这些平台已经可用。
+首个完整版本交付可双击启动的 macOS `.app`，星历、纹理、说明和许可随包提供，断网可使用全部首期功能，工作目录变化不影响资源访问。Linux 交付 `scoop bundle` 生成的 deb：程序位于 `usr/lib/dev.scoop.solar-system/bin/`，资源位于 `usr/share/dev.scoop.solar-system/solar/`，程序按 `/proc/self/exe` 定位资源，不依赖工作目录。已验证 macOS aarch64 与 Linux x86_64 GNU；Intel macOS、Rosetta、Windows、Linux aarch64 及 X11 会话尚未验证，不把模块可移植性当作这些平台已经可用。
 
 实施分为基础闭环、天文与时间、全部天体与展示尺度、外观与阴影、交互及打包五个批次，详见 [实施与验收](IMPLEMENTATION.md)。太阳光照在第一个可见场景即实现，后续只补充材质、遮挡和质量；不会把用户要求的光照留成尾项。
 

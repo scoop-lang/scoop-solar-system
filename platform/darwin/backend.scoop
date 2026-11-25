@@ -1,0 +1,54 @@
+package dev.scoop.solar
+
+import scoop.graphics.*
+import scoop.graphics.native.*
+
+// Metal handles are borrowed only in this file on macOS.
+
+internal fun targetFormat(): NativeGpuFormat = NativeGpuFormat.Metal(80ul)
+
+internal fun targetLayout(): GpuPixelLayout = GpuPixelLayout.Bgra8
+
+@Unsafe
+internal fun createNative(native: NativeGpuDevice): Ptr<Unit>? = when (native) {
+    case Metal(val metal, val queue) -> nativeCreate(metal, queue)
+    else -> throw GraphicsException("incompatible GPU device")
+}
+
+@Unsafe
+internal fun renderNative(
+    renderer: Ptr<Unit>,
+    texture: NativeGpuTexture,
+    target: GpuBuffer,
+    frame: SceneFrame
+): Int = when (texture) {
+    case Metal(val pointer) ->
+        nativeRender(
+            renderer,
+            pointer,
+            frame.camera,
+            frame.time,
+            if (frame.showOrbits) 1 else 0,
+            if (frame.showBelt) 1 else 0
+        )
+    else -> throw GraphicsException("incompatible render target")
+}
+
+internal fun closeNative(device: GpuDevice, renderer: Ptr<Unit>) {
+    @Unsafe {
+        nativeClose(renderer)
+    }
+}
+
+@Extern(name = "solar_renderer_create")
+private fun nativeCreate(device: Ptr<Unit>, queue: Ptr<Unit>): Ptr<Unit>?
+
+@Extern(name = "solar_renderer_render")
+private fun nativeRender(
+    renderer: Ptr<Unit>,
+    texture: Ptr<Unit>,
+    camera: CameraPacket,
+    et: Double,
+    orbits: Int,
+    belt: Int
+): Int

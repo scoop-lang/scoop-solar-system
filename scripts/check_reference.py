@@ -4,6 +4,7 @@
 import ctypes
 import json
 import math
+import platform
 import subprocess
 
 from prepare import ROOT
@@ -27,12 +28,17 @@ def distance(vector: Vector, expected: list[float]) -> float:
 
 
 def main() -> None:
-    output = ROOT / "target/libsolar-reference.dylib"
+    if platform.system() == "Linux":
+        output = ROOT / "target/libsolar-reference.so"
+        compiler = ["clang", "-shared", "-fPIC"]
+        libraries = ["-lm"]
+    else:
+        output = ROOT / "target/libsolar-reference.dylib"
+        compiler = ["xcrun", "clang", "-dynamiclib"]
+        libraries = []
     subprocess.run(
         [
-            "xcrun",
-            "clang",
-            "-dynamiclib",
+            *compiler,
             "-Wall",
             "-Wextra",
             "-Werror",
@@ -40,6 +46,7 @@ def main() -> None:
             "-Ivendor/cspice/include",
             "native/astronomy/ephemeris.c",
             "vendor/cspice/lib/cspice.a",
+            *libraries,
             "-o",
             str(output),
         ],
